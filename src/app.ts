@@ -3,8 +3,9 @@ import express, { type Request, type Response } from "express";
 import pinoHttp from "pino-http";
 
 import { logger } from "./utils/logger.ts";
+import { validPort } from "./utils/options.ts";
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = validPort();
 
 const app = express();
 
@@ -14,7 +15,7 @@ app.use(
     genReqId: (request, response) => {
       const providedRequestId = request.headers["x-request-id"];
       const requestId =
-        typeof providedRequestId === "string" && providedRequestId.length <= 128
+        typeof providedRequestId === "string" && /^[A-Za-z0-9._:-]{1,128}$/.test(providedRequestId)
           ? providedRequestId
           : randomUUID();
 
