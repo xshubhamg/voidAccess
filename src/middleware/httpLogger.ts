@@ -28,11 +28,12 @@ export const httpLogger = pinoHttp({
   serializers: {
     req(req) {
       return {
+        ...req,
+        id: req.id,
         method: req.method,
-        url: req.url,
+        url: req.url?.split("?")[0],
         query: req.query,
         params: req.params,
-        // request id already added by genReqId, no need to duplicate
         remoteAddress: req.remoteAddress,
         userAgent: req.headers?.["user-agent"],
       };

@@ -11,13 +11,10 @@ const PORT = validPort();
 
 const app = express();
 
-app.use(express.json({ limit: "100kb" }));
-app.use(express.urlencoded({ extended: false, limit: "100kb" }));
-
 app.use(httpLogger);
 
-app.use(notFoundHandler);
-app.use(errorHandler);
+app.use(express.json({ limit: "100kb" }));
+app.use(express.urlencoded({ extended: false, limit: "100kb" }));
 
 app.use(
   rateLimit({
@@ -32,6 +29,9 @@ app.get("/", (req: Request, res: Response) => {
   req.log.info({ requestId: req.id }, "Handling root request");
   res.send("Hello express | typescript | postgresSQL");
 });
+
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 app.listen(PORT, () => {
   logger.info({ port: PORT }, "Server is running");

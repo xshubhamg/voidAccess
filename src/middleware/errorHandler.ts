@@ -10,9 +10,15 @@ export const notFoundHandler: RequestHandler = (req, _res, next) => {
 
 export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   const isAppError = error instanceof AppError;
-  const statusCode = isAppError ? error.statusCode : 500;
+  const errorStatus = error.statusCode ?? error.status;
+  const isClientError = !isAppError && errorStatus >= 400 && errorStatus < 500;
+  const statusCode = isAppError ? error.statusCode : isClientError ? errorStatus : 500;
   const errorCode = isAppError ? error.errorCode : "INTERNAL_SERVER_ERROR";
-  const message = isAppError ? error.message : "An unexpected error occurred";
+  const message = isAppError
+    ? error.message
+    : isClientError
+      ? "A client error occurred"
+      : "An unexpected error occurred";
 
   req.log.error(
     {
