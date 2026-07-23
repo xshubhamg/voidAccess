@@ -2,12 +2,10 @@ import express, { type Request, type Response } from "express";
 
 import { rateLimit } from "express-rate-limit";
 
+import { config } from "./config/index.ts";
 import { notFoundHandler, errorHandler } from "./middleware/errorHandler.ts";
 import { logger } from "./utils/logger.ts";
-import { validPort } from "./utils/options.ts";
 import { httpLogger } from "./middleware/httpLogger.ts";
-
-const PORT = validPort();
 
 const app = express();
 
@@ -33,6 +31,6 @@ app.get("/", (req: Request, res: Response) => {
 app.use(notFoundHandler);
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  logger.info({ port: PORT }, "Server is running");
+app.listen(config.PORT, () => {
+  logger.info({ port: config.PORT }, "Server is running");
 });
