@@ -3,6 +3,7 @@ dist/
 build/
 
 TODO.md
+ERD-notes.md
 
 .env
 .env.local
