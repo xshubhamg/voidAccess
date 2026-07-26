@@ -16,16 +16,20 @@ import {
 export const sessionStatus = pgEnum("session_status", ["active", "revoked", "expired"]);
 export const inviteStatus = pgEnum("invite_status", ["pending", "accepted", "expired", "revoked"]);
 
-export const users = pgTable("users", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  email: varchar("email", { length: 320 }).notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
-  name: varchar("name", { length: 120 }).notNull(),
-  avatarUrl: text("avatar_url"),
-  emailVerified: boolean("email_verified").default(false).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    email: varchar("email", { length: 320 }).notNull(),
+    passwordHash: text("password_hash").notNull(),
+    name: varchar("name", { length: 120 }).notNull(),
+    avatarUrl: text("avatar_url"),
+    emailVerified: boolean("email_verified").default(false).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("users_email_unique_idx").on(sql`lower(${table.email})`)],
+);
 
 export const organizations = pgTable(
   "organizations",
@@ -102,7 +106,7 @@ export const memberships = pgTable(
       .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
     roleId: uuid("role_id")
       .notNull()
-      .references(() => roles.id, { onDelete: "restrict", onUpdate: "cascade" }),
+      .references(() => roles.id, { onDelete: "cascade", onUpdate: "cascade" }),
     joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
@@ -132,7 +136,7 @@ export const sessions = pgTable(
   },
   (table) => [
     index("sessions_user_id_idx").on(table.userId),
-    index("sessions_refresh_token_hash_idx").on(table.refreshTokenHash),
+    uniqueIndex("sessions_refresh_token_hash_unique_idx").on(table.refreshTokenHash),
   ],
 );
 
@@ -150,7 +154,7 @@ export const invites = pgTable(
     email: varchar("email", { length: 320 }).notNull(),
     roleId: uuid("role_id")
       .notNull()
-      .references(() => roles.id, { onDelete: "restrict", onUpdate: "cascade" }),
+      .references(() => roles.id, { onDelete: "cascade", onUpdate: "cascade" }),
     tokenHash: text("token_hash").notNull().unique(),
     status: inviteStatus("status").default("pending").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
