@@ -1,14 +1,14 @@
-import type { ErrorRequestHandler, RequestHandler } from "express";
+import type { ErrorRequestHandler, RequestHandler, Request, Response } from "express";
 
 import { AppError } from "../utils/AppError.ts";
 
-export const notFoundHandler: RequestHandler = (req, _res, next) => {
+export const notFoundHandler: RequestHandler = (req: Request, _res: Response, next) => {
   next(
     new AppError(`Route ${req.method} ${req.originalUrl} was not found`, 404, "ROUTE_NOT_FOUND"),
   );
 };
 
-export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (error, req: Request, res: Response, _next) => {
   const isAppError = error instanceof AppError;
   const errorStatus = error.statusCode ?? error.status;
   const isClientError = !isAppError && errorStatus >= 400 && errorStatus < 500;
