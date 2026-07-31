@@ -8,6 +8,7 @@
     "server": "node --watch src/app.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:seed": "node src/database/seed.ts",
     "db:studio": "drizzle-kit studio",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
