@@ -204,9 +204,7 @@ async function seed() {
       for (const permName of permNames) {
         const permId = permMap.get(permName);
         if (!permId) {
-          throw new Error(
-            `Permission "${permName}" not found after seed — this should not happen`,
-          );
+          throw new Error(`Permission "${permName}" not found after seed — this should not happen`);
         }
         mappings.push({ roleId, permissionId: permId });
       }
