@@ -7,6 +7,7 @@ import { JWT_REFRESH_EXPIRATION } from "../config/index.ts";
 import type { Database } from "../database/client.ts";
 import { sessions, users } from "../database/schema/index.ts";
 import { AppError } from "../utils/AppError.ts";
+import { isUniqueViolation } from "../utils/dbErrors.ts";
 import {
   hashToken,
   parseDurationMs,
@@ -38,19 +39,6 @@ interface AuthResult {
 }
 
 const REFRESH_TTL_MS = parseDurationMs(JWT_REFRESH_EXPIRATION);
-
-function isUniqueViolation(error: unknown): boolean {
-  // Drizzle wraps driver errors, so walk the cause chain looking for PG's
-  // unique_violation code.
-  let current: unknown = error;
-  while (typeof current === "object" && current !== null) {
-    if ((current as { code?: unknown }).code === "23505") {
-      return true;
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
-}
 
 function toPublicUser(row: {
   id: string;
