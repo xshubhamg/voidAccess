@@ -30,3 +30,5 @@ docs/
 *.swp
 *.swo
 *~
+
+.commandcode/
