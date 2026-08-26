@@ -17,9 +17,12 @@
 
 ## Repository structure
 
-- `src/app.ts` - application entrypoint and middleware registration.
+- `src/index.ts` - application entrypoint: verifies database connectivity, starts listening, wires graceful shutdown.
+- `src/app.ts` - Express app factory (`buildApp()`): middleware and route registration.
+- `src/routes/` - route definitions mounted in `app.ts`.
 - `src/middleware/` - Express middleware, including logging, errors, and request validation.
-- `src/utils/` - shared utilities such as `AppError`, logging, and options.
+- `src/utils/` - shared utilities such as `AppError` and logging.
+- `src/database/client.ts` - pg pool + Drizzle client with `connectDatabase()` / `closeDatabase()` lifecycle helpers.
 - `src/validations/` - reusable Zod schemas.
 - `tests/` - automated tests.
 - `TODO.md` - feature roadmap and learning checklist.

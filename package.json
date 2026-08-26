@@ -4,8 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "node src/app.ts",
-    "server": "node --watch src/app.ts",
+    "dev": "node src/index.ts",
+    "server": "node --watch src/index.ts",
+    "start": "node src/index.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "node src/database/seed.ts",
