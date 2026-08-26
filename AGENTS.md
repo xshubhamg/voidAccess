@@ -20,7 +20,8 @@
 - `src/index.ts` - application entrypoint: verifies database connectivity, starts listening, wires graceful shutdown.
 - `src/app.ts` - Express app factory (`buildApp()`): middleware and route registration.
 - `src/routes/` - route definitions mounted in `app.ts`.
-- `src/middleware/` - Express middleware, including logging, errors, and request validation.
+- `src/services/` - domain services (e.g. auth); receive the `Database` instance as a parameter.
+- `src/middleware/` - Express middleware, including logging, errors, request validation, and authentication.
 - `src/utils/` - shared utilities such as `AppError` and logging.
 - `src/database/client.ts` - pg pool + Drizzle client with `connectDatabase()` / `closeDatabase()` lifecycle helpers.
 - `src/validations/` - reusable Zod schemas.

@@ -4,6 +4,7 @@ import { rateLimit } from "express-rate-limit";
 
 import { notFoundHandler, errorHandler } from "./middleware/errorHandler.ts";
 import { httpLogger } from "./middleware/httpLogger.ts";
+import { authRouter } from "./routes/auth.routes.ts";
 import { healthRouter } from "./routes/health.routes.ts";
 
 export function buildApp(): express.Express {
@@ -24,6 +25,7 @@ export function buildApp(): express.Express {
   );
 
   app.use("/health", healthRouter);
+  app.use("/auth", authRouter);
 
   app.get("/", (req: Request, res: Response) => {
     req.log.info({ requestId: req.id }, "Handling root request");

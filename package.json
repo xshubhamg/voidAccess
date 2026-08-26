@@ -14,10 +14,13 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",
-    "lint:fix": "oxlint --fix ."
+    "lint:fix": "oxlint --fix .",
+    "test": "bun test"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.0",
     "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.1.1",
     "@types/pg": "^8.20.0",
     "drizzle-kit": "^0.31.10",
@@ -28,10 +31,12 @@
   },
   "peerDependencies": {},
   "dependencies": {
+    "@node-rs/argon2": "^2.1.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.6.0",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.22.0",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",

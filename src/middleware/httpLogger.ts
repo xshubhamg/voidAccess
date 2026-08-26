@@ -6,7 +6,13 @@ import { randomUUID } from "node:crypto";
 export const httpLogger = pinoHttp({
   logger,
   redact: {
-    paths: ["req.headers.authorization", "req.headers.cookie", "req.body.password"],
+    paths: [
+      "req.headers.authorization",
+      "req.headers.cookie",
+      "req.body.password",
+      "req.body.refreshToken",
+      "req.body.accessToken",
+    ],
     censor: "[REDACTED]",
   },
   genReqId: (request, response) => {
