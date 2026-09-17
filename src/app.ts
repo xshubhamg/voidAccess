@@ -7,6 +7,7 @@ import { httpLogger } from "./middleware/httpLogger.ts";
 import { authRouter } from "./routes/auth.routes.ts";
 import { healthRouter } from "./routes/health.routes.ts";
 import { organizationRouter } from "./routes/organization.routes.ts";
+import { roleRouter } from "./routes/role.routes.ts";
 
 export function buildApp(): express.Express {
   const app = express();
@@ -28,6 +29,7 @@ export function buildApp(): express.Express {
   app.use("/health", healthRouter);
   app.use("/auth", authRouter);
   app.use("/organizations", organizationRouter);
+  app.use("/organizations/:orgId/roles", roleRouter);
 
   app.get("/", (req: Request, res: Response) => {
     req.log.info({ requestId: req.id }, "Handling root request");
