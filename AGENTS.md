@@ -4,7 +4,7 @@
 
 - voidAccess is a Team Access Control API.
 - The implementation roadmap is maintained in `TODO.md`.
-- The project is currently in its foundational setup phase; database, authentication, organizations, RBAC, and audit features are not implemented yet unless present in the codebase.
+- The current codebase includes database, authentication, organizations, RBAC, memberships, invitations, and audit logging.
 
 ## Technology
 

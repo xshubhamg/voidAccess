@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
 
 import { NODE_ENV } from "../config/index.ts";
 import { db } from "../database/client.ts";
@@ -34,6 +35,15 @@ function sessionMetaFrom(ip: string | undefined, userAgent: string | undefined):
 }
 
 export const authRouter: Router = Router();
+
+authRouter.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 30,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+  }),
+);
 
 authRouter.post(
   "/register",

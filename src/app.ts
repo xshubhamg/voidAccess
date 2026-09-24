@@ -3,6 +3,7 @@ import express, { type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 
 import { notFoundHandler, errorHandler } from "./middleware/errorHandler.ts";
+import { TRUST_PROXY_HOPS } from "./config/index.ts";
 import { httpLogger } from "./middleware/httpLogger.ts";
 import { authRouter } from "./routes/auth.routes.ts";
 import { auditRouter } from "./routes/audit.routes.ts";
@@ -14,6 +15,14 @@ import { roleRouter } from "./routes/role.routes.ts";
 
 export function buildApp(): express.Express {
   const app = express();
+
+  app.set("trust proxy", TRUST_PROXY_HOPS);
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    next();
+  });
 
   app.use(httpLogger);
 

@@ -9,6 +9,7 @@ export const dbEnvSchema = z.object({
 export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).optional(),
   DATABASE_URL: databaseUrl,
   REDIS_URL: z.string().min(1, "REDIS_URL is required"),

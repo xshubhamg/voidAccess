@@ -23,6 +23,7 @@ export const env = config;
 export const {
   NODE_ENV,
   PORT,
+  TRUST_PROXY_HOPS,
   LOG_LEVEL,
   DATABASE_URL,
   REDIS_URL,
