@@ -17,5 +17,13 @@ export const refreshTokenSchema = z.object({
   refreshToken: nonEmptyString("Refresh token"),
 });
 
+export const verificationTokenSchema = z.object({
+  token: nonEmptyString("Verification token"),
+});
+
+export const resendVerificationSchema = z.object({
+  email: emailSchema,
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

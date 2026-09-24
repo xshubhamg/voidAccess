@@ -25,6 +25,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  emailVerified: boolean;
 }
 
 interface PublicUser extends AuthUser {
@@ -106,6 +107,10 @@ export async function loginUser(
     throw new AppError("Invalid email or password", 401, "INVALID_CREDENTIALS");
   }
 
+  if (!user.emailVerified) {
+    throw new AppError("Email verification is required", 403, "EMAIL_NOT_VERIFIED");
+  }
+
   return createSessionForUser(db, toPublicUser(user), meta);
 }
 
@@ -126,71 +131,93 @@ async function createSessionForUser(
     expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
   });
 
-  return { user, accessToken: signAccessToken(user.id), refreshToken };
+  return { user, accessToken: signAccessToken(user.id, sessionId), refreshToken };
 }
 
 export async function refreshSession(db: Database, refreshToken: string): Promise<AuthResult> {
   const payload = verifyRefreshToken(refreshToken);
   const tokenHash = hashToken(refreshToken);
-
-  const [session] = await db
-    .select()
-    .from(sessions)
-    .where(eq(sessions.refreshTokenHash, tokenHash))
-    .limit(1);
-
-  if (!session || session.id !== payload.sid || session.userId !== payload.sub) {
-    throw new AppError("Refresh token is invalid", 401, "INVALID_REFRESH_TOKEN");
-  }
-
-  if (session.status !== "active") {
-    // Token replay: this session was already rotated or revoked. Fail closed.
-    await db
-      .update(sessions)
-      .set({ status: "revoked" })
-      .where(and(eq(sessions.userId, session.userId), eq(sessions.status, "active")));
-
-    throw new AppError(
-      "Refresh token was already used — all sessions have been revoked",
-      401,
-      "TOKEN_REUSE_DETECTED",
-    );
-  }
-
   const now = new Date();
-  if (session.expiresAt <= now) {
-    await db.update(sessions).set({ status: "expired" }).where(eq(sessions.id, session.id));
 
-    throw new AppError("Session has expired", 401, "SESSION_EXPIRED");
-  }
+  return db.transaction(async (tx) => {
+    const [session] = await tx
+      .select()
+      .from(sessions)
+      .where(eq(sessions.refreshTokenHash, tokenHash))
+      .for("update")
+      .limit(1);
 
-  const [user] = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      name: users.name,
-      emailVerified: users.emailVerified,
-      createdAt: users.createdAt,
-    })
-    .from(users)
-    .where(eq(users.id, session.userId))
-    .limit(1);
+    if (!session || session.id !== payload.sid || session.userId !== payload.sub) {
+      throw new AppError("Refresh token is invalid", 401, "INVALID_REFRESH_TOKEN");
+    }
 
-  if (!user) {
-    throw new AppError("Refresh token is invalid", 401, "INVALID_REFRESH_TOKEN");
-  }
+    if (session.status !== "active") {
+      await tx
+        .update(sessions)
+        .set({ status: "revoked" })
+        .where(and(eq(sessions.userId, session.userId), eq(sessions.status, "active")));
 
-  const nextRefreshToken = signRefreshToken(session.userId, session.id);
-  await db
-    .update(sessions)
-    .set({ refreshTokenHash: hashToken(nextRefreshToken), lastUsedAt: now })
-    .where(eq(sessions.id, session.id));
+      throw new AppError(
+        "Refresh token was already used — all sessions have been revoked",
+        401,
+        "TOKEN_REUSE_DETECTED",
+      );
+    }
 
-  return {
-    user: toPublicUser(user),
-    accessToken: signAccessToken(session.userId),
-    refreshToken: nextRefreshToken,
-  };
+    if (session.expiresAt <= now) {
+      await tx.update(sessions).set({ status: "expired" }).where(eq(sessions.id, session.id));
+
+      throw new AppError("Session has expired", 401, "SESSION_EXPIRED");
+    }
+
+    const [user] = await tx
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        emailVerified: users.emailVerified,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1);
+
+    if (!user) {
+      throw new AppError("Refresh token is invalid", 401, "INVALID_REFRESH_TOKEN");
+    }
+
+    const nextRefreshToken = signRefreshToken(session.userId, session.id);
+    const [rotated] = await tx
+      .update(sessions)
+      .set({ refreshTokenHash: hashToken(nextRefreshToken), lastUsedAt: now })
+      .where(
+        and(
+          eq(sessions.id, session.id),
+          eq(sessions.status, "active"),
+          eq(sessions.refreshTokenHash, tokenHash),
+        ),
+      )
+      .returning({ id: sessions.id });
+
+    if (!rotated) {
+      await tx
+        .update(sessions)
+        .set({ status: "revoked" })
+        .where(and(eq(sessions.userId, session.userId), eq(sessions.status, "active")));
+
+      throw new AppError(
+        "Refresh token was already used — all sessions have been revoked",
+        401,
+        "TOKEN_REUSE_DETECTED",
+      );
+    }
+
+    return {
+      user: toPublicUser(user),
+      accessToken: signAccessToken(session.userId, session.id),
+      refreshToken: nextRefreshToken,
+    };
+  });
 }
 
 export async function logoutSession(db: Database, refreshToken: string): Promise<void> {

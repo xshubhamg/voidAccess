@@ -16,4 +16,8 @@ export const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(1, "JWT_REFRESH_SECRET is required"),
   JWT_EXPIRATION: z.string().min(1, "JWT_EXPIRATION is required"),
   JWT_REFRESH_EXPIRATION: z.string().min(1, "JWT_REFRESH_EXPIRATION is required"),
+  EMAIL_VERIFICATION_EXPIRATION: z
+    .string()
+    .min(1, "EMAIL_VERIFICATION_EXPIRATION is required")
+    .default("24h"),
 });

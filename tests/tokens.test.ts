@@ -34,8 +34,8 @@ describe("token signing and verification", () => {
   const sessionId = "9a8b7c6d-5e4f-4a3b-2c1d-0f9e8d7c6b5a";
 
   it("round-trips access tokens", () => {
-    const token = signAccessToken(userId);
-    expect(verifyAccessToken(token)).toEqual({ sub: userId });
+    const token = signAccessToken(userId, sessionId);
+    expect(verifyAccessToken(token)).toEqual({ sub: userId, sid: sessionId });
   });
 
   it("round-trips refresh tokens", () => {
@@ -44,7 +44,7 @@ describe("token signing and verification", () => {
   });
 
   it("rejects tampered access tokens with a 401 AppError", () => {
-    const token = signAccessToken(userId);
+    const token = signAccessToken(userId, sessionId);
     expect(() => verifyAccessToken(`${token}x`)).toThrow(AppError);
     try {
       verifyAccessToken(`${token}x`);

@@ -1,5 +1,6 @@
 import { Router } from "express";
 
+import { NODE_ENV } from "../config/index.ts";
 import { db } from "../database/client.ts";
 import { authenticate } from "../middleware/authenticate.ts";
 import { validateRequest } from "../middleware/validateRequest.ts";
@@ -11,9 +12,20 @@ import {
   revokeAllSessions,
   type SessionMeta,
 } from "../services/auth.service.ts";
+import {
+  issueEmailVerificationToken,
+  requestEmailVerification,
+  verifyEmailToken,
+} from "../services/email-verification.service.ts";
 import { AppError } from "../utils/AppError.ts";
 import { asyncHandler } from "../utils/asyncHandler.ts";
-import { loginSchema, refreshTokenSchema, registerSchema } from "../validations/auth.schemas.ts";
+import {
+  loginSchema,
+  refreshTokenSchema,
+  registerSchema,
+  resendVerificationSchema,
+  verificationTokenSchema,
+} from "../validations/auth.schemas.ts";
 
 function sessionMetaFrom(ip: string | undefined, userAgent: string | undefined): SessionMeta {
   return { ipAddress: ip ?? null, userAgent: userAgent ?? null };
@@ -26,11 +38,42 @@ authRouter.post(
   validateRequest({ body: registerSchema }),
   asyncHandler(async (req, res) => {
     const user = await registerUser(db, req.body);
+    const verificationToken = await issueEmailVerificationToken(db, user.id);
 
     res.status(201).json({
       success: true,
       message: "Account created",
-      data: { user },
+      data: {
+        user,
+        ...(NODE_ENV === "production" ? {} : { verificationToken }),
+      },
+    });
+  }),
+);
+
+authRouter.post(
+  "/verify-email",
+  validateRequest({ body: verificationTokenSchema }),
+  asyncHandler(async (req, res) => {
+    await verifyEmailToken(db, req.body.token);
+
+    res.status(200).json({
+      success: true,
+      message: "Email verified",
+    });
+  }),
+);
+
+authRouter.post(
+  "/resend-verification",
+  validateRequest({ body: resendVerificationSchema }),
+  asyncHandler(async (req, res) => {
+    const verificationToken = await requestEmailVerification(db, req.body.email);
+
+    res.status(202).json({
+      success: true,
+      message: "If the account exists and is unverified, a verification message was sent",
+      data: NODE_ENV === "production" || !verificationToken ? {} : { verificationToken },
     });
   }),
 );

@@ -1,8 +1,8 @@
 import type { RequestHandler } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 
 import { db } from "../database/client.ts";
-import { users } from "../database/schema/index.ts";
+import { sessions, users } from "../database/schema/index.ts";
 import { AppError } from "../utils/AppError.ts";
 import { verifyAccessToken } from "../utils/tokens.ts";
 
@@ -17,9 +17,22 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
     const payload = verifyAccessToken(header.slice("Bearer ".length));
 
     const [user] = await db
-      .select({ id: users.id, email: users.email, name: users.name })
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        emailVerified: users.emailVerified,
+      })
       .from(users)
-      .where(eq(users.id, payload.sub))
+      .innerJoin(sessions, eq(sessions.userId, users.id))
+      .where(
+        and(
+          eq(users.id, payload.sub),
+          eq(sessions.id, payload.sid),
+          eq(sessions.status, "active"),
+          gt(sessions.expiresAt, new Date()),
+        ),
+      )
       .limit(1);
 
     if (!user) {

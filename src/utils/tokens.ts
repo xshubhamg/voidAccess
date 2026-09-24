@@ -12,6 +12,7 @@ import { AppError } from "./AppError.ts";
 
 export interface AccessTokenPayload {
   sub: string;
+  sid: string;
 }
 
 export interface RefreshTokenPayload {
@@ -45,8 +46,10 @@ export function parseDurationMs(value: string): number {
 const ACCESS_TOKEN_TTL_SECONDS = parseDurationMs(JWT_EXPIRATION) / 1000;
 const REFRESH_TOKEN_TTL_SECONDS = parseDurationMs(JWT_REFRESH_EXPIRATION) / 1000;
 
-export function signAccessToken(userId: string): string {
-  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_TTL_SECONDS });
+export function signAccessToken(userId: string, sessionId: string): string {
+  return jwt.sign({ sub: userId, sid: sessionId }, JWT_SECRET, {
+    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+  });
 }
 
 export function signRefreshToken(userId: string, sessionId: string): string {
@@ -64,11 +67,17 @@ export function verifyAccessToken(token: string): AccessTokenPayload {
     }
 
     const userId = payload.sub;
-    if (typeof userId !== "string" || userId.length === 0) {
-      throw new Error("Missing subject claim");
+    const sessionId = payload.sid;
+    if (
+      typeof userId !== "string" ||
+      userId.length === 0 ||
+      typeof sessionId !== "string" ||
+      sessionId.length === 0
+    ) {
+      throw new Error("Missing subject or session claim");
     }
 
-    return { sub: userId };
+    return { sub: userId, sid: sessionId };
   } catch {
     throw new AppError("Access token is invalid or expired", 401, "INVALID_ACCESS_TOKEN");
   }
