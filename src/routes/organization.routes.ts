@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import { db } from "../database/client.ts";
+import { recordAudit } from "../services/audit.service.ts";
 import { authenticate } from "../middleware/authenticate.ts";
 import { requireOrgOwner } from "../middleware/requireOrgOwner.ts";
 import { resolveTenant } from "../middleware/resolveTenant.ts";
@@ -13,6 +14,7 @@ import {
   updateOrganization,
 } from "../services/organization.service.ts";
 import { AppError } from "../utils/AppError.ts";
+import { requestAuditContext } from "../utils/auditContext.ts";
 import { asyncHandler } from "../utils/asyncHandler.ts";
 import {
   createOrganizationSchema,
@@ -36,6 +38,14 @@ organizationRouter.post(
     const organization = await createOrganization(db, {
       ownerId: req.user.id,
       name: req.body.name,
+    });
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: organization.id,
+      actorId: req.user.id,
+      action: "organization.created",
+      resourceType: "organization",
+      resourceId: organization.id,
     });
 
     res.status(201).json({
@@ -86,6 +96,15 @@ organizationRouter.patch(
       organizationId: req.organization.id,
       name: req.body.name,
     });
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: organization.id,
+      actorId: req.user?.id ?? null,
+      action: "organization.updated",
+      resourceType: "organization",
+      resourceId: organization.id,
+      metadata: { name: organization.name },
+    });
 
     res.status(200).json({
       success: true,
@@ -113,6 +132,15 @@ organizationRouter.post(
       organizationId: req.organization.id,
       newOwnerId: req.body.userId,
     });
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: result.organizationId,
+      actorId: req.user?.id ?? null,
+      action: "organization.ownership_transferred",
+      resourceType: "organization",
+      resourceId: result.organizationId,
+      metadata: { newOwnerId: result.ownerId },
+    });
 
     res.status(200).json({
       success: true,
@@ -134,6 +162,15 @@ organizationRouter.delete(
     }
 
     await deleteOrganization(db, req.organization.id);
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: null,
+      actorId: req.user?.id ?? null,
+      action: "organization.deleted",
+      resourceType: "organization",
+      resourceId: req.organization.id,
+      metadata: { name: req.organization.name },
+    });
 
     res.status(200).json({
       success: true,

@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import type { Request, RequestHandler, Response } from "express";
 
 import { memberRouter } from "../src/routes/member.routes.ts";
+import * as auditService from "../src/services/audit.service.ts";
 import { authenticate } from "../src/middleware/authenticate.ts";
 import { resolveTenant } from "../src/middleware/resolveTenant.ts";
 import * as service from "../src/services/membership.service.ts";
@@ -49,6 +50,10 @@ async function invoke(handler: RequestHandler, req: Request) {
     handler(req, res, reject);
   });
 }
+
+beforeEach(() => {
+  spyOn(auditService, "recordAudit").mockResolvedValue(undefined);
+});
 
 afterEach(() => mock.restore());
 

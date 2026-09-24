@@ -1,6 +1,7 @@
 import { Router } from "express";
 
 import { db } from "../database/client.ts";
+import { recordAudit } from "../services/audit.service.ts";
 import { authenticate } from "../middleware/authenticate.ts";
 import { requirePermission } from "../middleware/requirePermission.ts";
 import { resolveTenant } from "../middleware/resolveTenant.ts";
@@ -13,6 +14,7 @@ import {
   updateRole,
 } from "../services/role.service.ts";
 import { AppError } from "../utils/AppError.ts";
+import { requestAuditContext } from "../utils/auditContext.ts";
 import { asyncHandler } from "../utils/asyncHandler.ts";
 import {
   createRoleSchema,
@@ -60,6 +62,15 @@ roleRouter.post(
       name: req.body.name,
       description: req.body.description,
       permissions: req.body.permissions,
+    });
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: req.organization.id,
+      actorId: req.user?.id ?? null,
+      action: "role.created",
+      resourceType: "role",
+      resourceId: role.id,
+      metadata: { name: role.name },
     });
 
     res.status(201).json({
@@ -116,6 +127,15 @@ roleRouter.patch(
       description: req.body.description,
       permissions: req.body.permissions,
     });
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: req.organization.id,
+      actorId: req.user?.id ?? null,
+      action: "role.updated",
+      resourceType: "role",
+      resourceId: role.id,
+      metadata: { name: role.name, permissions: role.permissions },
+    });
 
     res.status(200).json({
       success: true,
@@ -141,6 +161,14 @@ roleRouter.delete(
     await deleteRole(db, {
       organizationId: req.organization.id,
       roleId,
+    });
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: req.organization.id,
+      actorId: req.user?.id ?? null,
+      action: "role.deleted",
+      resourceType: "role",
+      resourceId: roleId,
     });
 
     res.status(200).json({

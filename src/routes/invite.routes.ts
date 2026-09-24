@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import { NODE_ENV } from "../config/index.ts";
 import { db } from "../database/client.ts";
+import { recordAudit } from "../services/audit.service.ts";
 import { authenticate } from "../middleware/authenticate.ts";
 import { requirePermission } from "../middleware/requirePermission.ts";
 import { resolveTenant } from "../middleware/resolveTenant.ts";
@@ -13,6 +14,7 @@ import {
   revokeInvite,
 } from "../services/invite.service.ts";
 import { AppError } from "../utils/AppError.ts";
+import { requestAuditContext } from "../utils/auditContext.ts";
 import { asyncHandler } from "../utils/asyncHandler.ts";
 import {
   createInviteSchema,
@@ -39,6 +41,15 @@ inviteRouter.post(
       invitedByUserId: req.user.id,
       email: req.body.email,
       roleId: req.body.roleId,
+    });
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: req.organization.id,
+      actorId: req.user.id,
+      action: "invite.created",
+      resourceType: "invite",
+      resourceId: result.invite.id,
+      metadata: { email: result.invite.email, roleId: result.invite.roleId },
     });
 
     res.status(201).json({
@@ -91,6 +102,14 @@ inviteRouter.delete(
       organizationId: req.organization.id,
       inviteId: req.params.inviteId as string,
     });
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: req.organization.id,
+      actorId: req.user?.id ?? null,
+      action: "invite.revoked",
+      resourceType: "invite",
+      resourceId: req.params.inviteId as string,
+    });
 
     res.status(200).json({
       success: true,
@@ -111,6 +130,14 @@ inviteRouter.post(
     const result = await acceptInvite(db, {
       userId: req.user.id,
       token: req.body.token,
+    });
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: result.organizationId,
+      actorId: req.user.id,
+      action: "invite.accepted",
+      resourceType: "invite",
+      metadata: { roleId: result.roleId },
     });
 
     res.status(200).json({

@@ -17,7 +17,9 @@ import {
   requestEmailVerification,
   verifyEmailToken,
 } from "../services/email-verification.service.ts";
+import { recordAudit } from "../services/audit.service.ts";
 import { AppError } from "../utils/AppError.ts";
+import { requestAuditContext } from "../utils/auditContext.ts";
 import { asyncHandler } from "../utils/asyncHandler.ts";
 import {
   loginSchema,
@@ -39,6 +41,14 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const user = await registerUser(db, req.body);
     const verificationToken = await issueEmailVerificationToken(db, user.id);
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: null,
+      actorId: user.id,
+      action: "auth.registered",
+      resourceType: "user",
+      resourceId: user.id,
+    });
 
     res.status(201).json({
       success: true,
@@ -56,6 +66,13 @@ authRouter.post(
   validateRequest({ body: verificationTokenSchema }),
   asyncHandler(async (req, res) => {
     await verifyEmailToken(db, req.body.token);
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: null,
+      actorId: null,
+      action: "auth.email_verified",
+      resourceType: "user",
+    });
 
     res.status(200).json({
       success: true,
@@ -69,6 +86,13 @@ authRouter.post(
   validateRequest({ body: resendVerificationSchema }),
   asyncHandler(async (req, res) => {
     const verificationToken = await requestEmailVerification(db, req.body.email);
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: null,
+      actorId: null,
+      action: "auth.verification_requested",
+      resourceType: "user",
+    });
 
     res.status(202).json({
       success: true,
@@ -84,6 +108,14 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const meta = sessionMetaFrom(req.ip, req.headers["user-agent"]);
     const result = await loginUser(db, req.body, meta);
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: null,
+      actorId: result.user.id,
+      action: "auth.login",
+      resourceType: "user",
+      resourceId: result.user.id,
+    });
 
     res.status(200).json({
       success: true,
@@ -98,6 +130,14 @@ authRouter.post(
   validateRequest({ body: refreshTokenSchema }),
   asyncHandler(async (req, res) => {
     const result = await refreshSession(db, req.body.refreshToken);
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: null,
+      actorId: result.user.id,
+      action: "auth.session_refreshed",
+      resourceType: "user",
+      resourceId: result.user.id,
+    });
 
     res.status(200).json({
       success: true,
@@ -112,6 +152,13 @@ authRouter.post(
   validateRequest({ body: refreshTokenSchema }),
   asyncHandler(async (req, res) => {
     await logoutSession(db, req.body.refreshToken);
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: null,
+      actorId: null,
+      action: "auth.logout",
+      resourceType: "session",
+    });
 
     res.status(200).json({
       success: true,
@@ -129,6 +176,13 @@ authRouter.post(
     }
 
     await revokeAllSessions(db, req.user.id);
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: null,
+      actorId: req.user.id,
+      action: "auth.logout_all",
+      resourceType: "session",
+    });
 
     res.status(200).json({
       success: true,

@@ -1,12 +1,14 @@
 import { Router } from "express";
 
 import { db } from "../database/client.ts";
+import { recordAudit } from "../services/audit.service.ts";
 import { authenticate } from "../middleware/authenticate.ts";
 import { requirePermission } from "../middleware/requirePermission.ts";
 import { resolveTenant } from "../middleware/resolveTenant.ts";
 import { validateRequest } from "../middleware/validateRequest.ts";
 import { listMembers, removeMember, updateMemberRole } from "../services/membership.service.ts";
 import { AppError } from "../utils/AppError.ts";
+import { requestAuditContext } from "../utils/auditContext.ts";
 import { asyncHandler } from "../utils/asyncHandler.ts";
 import {
   memberParamsSchema,
@@ -60,6 +62,15 @@ memberRouter.patch(
       targetUserId: userId,
       roleId: req.body.roleId,
     });
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: req.organization.id,
+      actorId: req.user.id,
+      action: "member.role_updated",
+      resourceType: "membership",
+      resourceId: userId,
+      metadata: { roleId: member.roleId, roleName: member.roleName },
+    });
 
     res.status(200).json({
       success: true,
@@ -90,6 +101,14 @@ memberRouter.delete(
       organizationId: req.organization.id,
       actorUserId: req.user.id,
       targetUserId: userId,
+    });
+    await recordAudit(db, {
+      ...requestAuditContext(req),
+      organizationId: req.organization.id,
+      actorId: req.user.id,
+      action: "member.removed",
+      resourceType: "membership",
+      resourceId: userId,
     });
 
     res.status(200).json({
