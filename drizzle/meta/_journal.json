@@ -15,6 +15,13 @@
       "when": 1785085332900,
       "tag": "0001_role_fk_cascade",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785100000000,
+      "tag": "0002_verification_and_audit_retention",
+      "breakpoints": true
     }
   ]
 }

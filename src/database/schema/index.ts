@@ -137,6 +137,25 @@ export const sessions = pgTable(
   (table) => [
     index("sessions_user_id_idx").on(table.userId),
     uniqueIndex("sessions_refresh_token_hash_unique_idx").on(table.refreshTokenHash),
+    index("sessions_status_idx").on(table.status),
+  ],
+);
+
+export const emailVerificationTokens = pgTable(
+  "email_verification_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("email_verification_tokens_user_id_idx").on(table.userId),
+    index("email_verification_tokens_expires_at_idx").on(table.expiresAt),
   ],
 );
 
@@ -166,6 +185,9 @@ export const invites = pgTable(
     index("invites_invited_by_user_id_idx").on(table.invitedByUserId),
     index("invites_role_id_idx").on(table.roleId),
     index("invites_email_idx").on(table.email),
+    uniqueIndex("invites_pending_organization_email_unique_idx")
+      .on(table.organizationId, sql`lower(${table.email})`)
+      .where(sql`${table.status} = 'pending'`),
   ],
 );
 
@@ -173,9 +195,10 @@ export const auditLogs = pgTable(
   "audit_logs",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    organizationId: uuid("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "restrict", onUpdate: "cascade" }),
+    organizationId: uuid("organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
     actorId: uuid("actor_id").references(() => users.id, {
       onDelete: "set null",
       onUpdate: "cascade",
@@ -199,6 +222,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   ownedOrganizations: many(organizations, { relationName: "organizationOwner" }),
   memberships: many(memberships),
   sessions: many(sessions),
+  emailVerificationTokens: many(emailVerificationTokens),
   sentInvites: many(invites, { relationName: "inviteSender" }),
   auditLogs: many(auditLogs, { relationName: "auditActor" }),
 }));
@@ -258,6 +282,13 @@ export const membershipsRelations = relations(memberships, ({ one }) => ({
 export const sessionsRelations = relations(sessions, ({ one }) => ({
   user: one(users, {
     fields: [sessions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const emailVerificationTokensRelations = relations(emailVerificationTokens, ({ one }) => ({
+  user: one(users, {
+    fields: [emailVerificationTokens.userId],
     references: [users.id],
   }),
 }));
