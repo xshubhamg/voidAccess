@@ -6,6 +6,7 @@ import { notFoundHandler, errorHandler } from "./middleware/errorHandler.ts";
 import { httpLogger } from "./middleware/httpLogger.ts";
 import { authRouter } from "./routes/auth.routes.ts";
 import { healthRouter } from "./routes/health.routes.ts";
+import { inviteRouter } from "./routes/invite.routes.ts";
 import { memberRouter } from "./routes/member.routes.ts";
 import { organizationRouter } from "./routes/organization.routes.ts";
 import { roleRouter } from "./routes/role.routes.ts";
@@ -32,6 +33,7 @@ export function buildApp(): express.Express {
   app.use("/organizations", organizationRouter);
   app.use("/organizations/:orgId/roles", roleRouter);
   app.use("/organizations/:orgId/members", memberRouter);
+  app.use("/", inviteRouter);
 
   app.get("/", (req: Request, res: Response) => {
     req.log.info({ requestId: req.id }, "Handling root request");

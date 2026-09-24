@@ -20,4 +20,5 @@ export const envSchema = z.object({
     .string()
     .min(1, "EMAIL_VERIFICATION_EXPIRATION is required")
     .default("24h"),
+  INVITE_EXPIRATION: z.string().min(1, "INVITE_EXPIRATION is required").default("7d"),
 });
