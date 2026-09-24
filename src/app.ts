@@ -5,6 +5,7 @@ import { rateLimit } from "express-rate-limit";
 import { notFoundHandler, errorHandler } from "./middleware/errorHandler.ts";
 import { httpLogger } from "./middleware/httpLogger.ts";
 import { authRouter } from "./routes/auth.routes.ts";
+import { auditRouter } from "./routes/audit.routes.ts";
 import { healthRouter } from "./routes/health.routes.ts";
 import { inviteRouter } from "./routes/invite.routes.ts";
 import { memberRouter } from "./routes/member.routes.ts";
@@ -33,6 +34,7 @@ export function buildApp(): express.Express {
   app.use("/organizations", organizationRouter);
   app.use("/organizations/:orgId/roles", roleRouter);
   app.use("/organizations/:orgId/members", memberRouter);
+  app.use("/", auditRouter);
   app.use("/", inviteRouter);
 
   app.get("/", (req: Request, res: Response) => {
