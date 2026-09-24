@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, count, eq, isNull } from "drizzle-orm";
 
 import type { Database } from "../database/client.ts";
 import { memberships, organizations, roles } from "../database/schema/index.ts";
@@ -13,7 +13,15 @@ export interface OrganizationSummary {
   id: string;
   name: string;
   slug: string;
+  ownerId: string;
   createdAt: Date;
+}
+
+export interface OrganizationListResult {
+  items: OrganizationSummary[];
+  page: number;
+  limit: number;
+  total: number;
 }
 
 interface CreateOrganizationInput {
@@ -65,6 +73,7 @@ export async function createOrganization(
             id: organizations.id,
             name: organizations.name,
             slug: organizations.slug,
+            ownerId: organizations.ownerId,
             createdAt: organizations.createdAt,
           });
 
@@ -94,6 +103,37 @@ export async function createOrganization(
   );
 }
 
+export async function listOrganizations(
+  db: Database,
+  userId: string,
+  pagination: { page: number; limit: number },
+): Promise<OrganizationListResult> {
+  const [items, [total]] = await Promise.all([
+    db
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        slug: organizations.slug,
+        ownerId: organizations.ownerId,
+        createdAt: organizations.createdAt,
+      })
+      .from(memberships)
+      .innerJoin(organizations, eq(organizations.id, memberships.organizationId))
+      .where(eq(memberships.userId, userId))
+      .orderBy(asc(organizations.name), asc(organizations.id))
+      .limit(pagination.limit)
+      .offset((pagination.page - 1) * pagination.limit),
+    db.select({ value: count() }).from(memberships).where(eq(memberships.userId, userId)),
+  ]);
+
+  return {
+    items,
+    page: pagination.page,
+    limit: pagination.limit,
+    total: Number(total?.value ?? 0),
+  };
+}
+
 export async function updateOrganization(
   db: Database,
   input: { organizationId: string; name: string },
@@ -106,6 +146,7 @@ export async function updateOrganization(
       id: organizations.id,
       name: organizations.name,
       slug: organizations.slug,
+      ownerId: organizations.ownerId,
       createdAt: organizations.createdAt,
     });
 
@@ -114,6 +155,74 @@ export async function updateOrganization(
   }
 
   return organization;
+}
+
+export async function transferOrganizationOwnership(
+  db: Database,
+  input: { organizationId: string; newOwnerId: string },
+): Promise<{ organizationId: string; ownerId: string }> {
+  return db.transaction(async (tx) => {
+    const [organization] = await tx
+      .select({ id: organizations.id, ownerId: organizations.ownerId })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .limit(1);
+
+    if (!organization) {
+      throw new AppError("Organization not found", 404, "ORGANIZATION_NOT_FOUND");
+    }
+
+    if (organization.ownerId === input.newOwnerId) {
+      throw new AppError("User is already the organization owner", 409, "OWNER_ALREADY_ASSIGNED");
+    }
+
+    const [target] = await tx
+      .select({ id: memberships.id })
+      .from(memberships)
+      .where(
+        and(
+          eq(memberships.organizationId, input.organizationId),
+          eq(memberships.userId, input.newOwnerId),
+        ),
+      )
+      .limit(1);
+
+    if (!target) {
+      throw new AppError("Member not found", 404, "MEMBER_NOT_FOUND");
+    }
+
+    const systemRoles = await tx
+      .select({ id: roles.id, name: roles.name })
+      .from(roles)
+      .where(isNull(roles.organizationId));
+    const ownerRole = systemRoles.find((role) => role.name === OWNER_ROLE_NAME);
+    const memberRole = systemRoles.find((role) => role.name === "Member");
+
+    if (!ownerRole || !memberRole) {
+      throw new AppError(
+        "System roles are missing — run the database seed",
+        500,
+        "SYSTEM_ROLES_MISSING",
+      );
+    }
+
+    await tx.update(memberships).set({ roleId: ownerRole.id }).where(eq(memberships.id, target.id));
+    await tx
+      .update(memberships)
+      .set({ roleId: memberRole.id })
+      .where(
+        and(
+          eq(memberships.organizationId, input.organizationId),
+          eq(memberships.userId, organization.ownerId),
+        ),
+      );
+    await tx
+      .update(organizations)
+      .set({ ownerId: input.newOwnerId, updatedAt: new Date() })
+      .where(eq(organizations.id, input.organizationId));
+
+    return { organizationId: organization.id, ownerId: input.newOwnerId };
+  });
 }
 
 export async function deleteOrganization(db: Database, organizationId: string): Promise<void> {

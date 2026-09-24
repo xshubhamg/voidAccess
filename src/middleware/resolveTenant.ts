@@ -9,6 +9,7 @@ export interface TenantOrganization {
   id: string;
   name: string;
   slug: string;
+  ownerId: string;
 }
 
 export interface TenantMembership {
@@ -41,6 +42,7 @@ export const resolveTenant: RequestHandler = async (req, _res, next) => {
         organizationId: organizations.id,
         organizationName: organizations.name,
         organizationSlug: organizations.slug,
+        organizationOwnerId: organizations.ownerId,
         roleId: roles.id,
         roleName: roles.name,
       })
@@ -61,6 +63,7 @@ export const resolveTenant: RequestHandler = async (req, _res, next) => {
       id: row.organizationId,
       name: row.organizationName,
       slug: row.organizationSlug,
+      ownerId: row.organizationOwnerId,
     };
     req.membership = {
       roleId: row.roleId,

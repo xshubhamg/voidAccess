@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-import { nonEmptyString, uuidSchema } from "./common.schemas.ts";
+import { nonEmptyString, paginationSchema, uuidSchema } from "./common.schemas.ts";
 
 export const organizationNameSchema = nonEmptyString("Name").max(
   160,
@@ -17,6 +17,12 @@ export const updateOrganizationSchema = z.object({
 
 export const organizationParamsSchema = z.object({
   orgId: uuidSchema,
+});
+
+export const organizationListQuerySchema = paginationSchema;
+
+export const transferOwnershipSchema = z.object({
+  userId: uuidSchema,
 });
 
 export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;

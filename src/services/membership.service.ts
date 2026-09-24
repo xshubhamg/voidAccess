@@ -98,9 +98,9 @@ export async function updateMemberRole(
 
     const grantsOwnerRole = newRole.organizationId === null && newRole.name === OWNER_ROLE_NAME;
 
-    if (grantsOwnerRole && input.actorUserId !== organization.ownerId) {
+    if (grantsOwnerRole) {
       throw new AppError(
-        "Only the organization owner can grant the Owner role",
+        "The Owner role can only be assigned through ownership transfer",
         403,
         "OWNER_ASSIGNMENT_FORBIDDEN",
       );

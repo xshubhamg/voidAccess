@@ -163,17 +163,18 @@ describe("updateMemberRole", () => {
     expect(updates).toHaveLength(0);
   });
 
-  it("allows the organization owner to grant the system Owner role", async () => {
+  it("rejects direct assignment of the system Owner role", async () => {
     const { db, updates } = makeFakeDb({
       ...BASE_SCENARIO,
       role: { id: OWNER_ROLE_ID, name: "Owner", organizationId: null },
     });
 
-    const summary = await updateMemberRole(db, { ...BASE_INPUT, roleId: OWNER_ROLE_ID });
-
-    expect(summary.roleId).toBe(OWNER_ROLE_ID);
-    expect(summary.roleName).toBe("Owner");
-    expect(updates).toEqual([{ set: { roleId: OWNER_ROLE_ID } }]);
+    await expectAppError(
+      updateMemberRole(db, { ...BASE_INPUT, roleId: OWNER_ROLE_ID }),
+      403,
+      "OWNER_ASSIGNMENT_FORBIDDEN",
+    );
+    expect(updates).toHaveLength(0);
   });
 
   it("accepts custom roles belonging to the same organization", async () => {
