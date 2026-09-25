@@ -49,6 +49,9 @@ Authentication uses `Authorization: Bearer <access-token>`. Access and refresh J
 
 ```sh
 bun test
+# With an isolated TEST_DATABASE_URL:
+DATABASE_URL="$TEST_DATABASE_URL" bun run db:migrate
+TEST_DATABASE_URL="$TEST_DATABASE_URL" bun run test:integration
 bun run lint
 bun run format:check
 bunx tsc --noEmit
@@ -66,5 +69,6 @@ bunx tsc --noEmit
 - Configure `RESEND_API_KEY`, a verified `EMAIL_FROM`, and an HTTPS `APP_URL` in production. The application uses a PostgreSQL email outbox and background worker with retries and Resend idempotency keys.
 - Retention cleanup runs every hour by default, deleting terminal sessions, verification tokens, invitations, and email deliveries after 30 days and audit logs after 365 days. Configure the windows with `RETENTION_TERMINAL_DAYS`, `RETENTION_AUDIT_DAYS`, and `RETENTION_CLEANUP_INTERVAL`; apply legal holds before deletion.
 - Monitor `/health/ready`; it checks PostgreSQL and Redis, returns `503` when either is unavailable, and should be wired to load-balancer health checks. Monitor PostgreSQL saturation, Redis failures, authentication failures, and audit-write failures.
+- Run integration migration smoke tests against an isolated `TEST_DATABASE_URL`; never point them at the development database.
 
 The system architecture, trust boundaries, invariants, Mermaid diagrams, and decision register are documented in [docs/architecture.md](docs/architecture.md). Domain vocabulary is in [CONTEXT.md](CONTEXT.md), and durable decisions are recorded in [docs/adr](docs/adr/).

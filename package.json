@@ -15,7 +15,8 @@
     "format:check": "oxfmt --check .",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
-    "test": "bun test"
+    "test": "bun test",
+    "test:integration": "bun test tests/integration"
   },
   "devDependencies": {
     "@types/bun": "^1.4.0",
