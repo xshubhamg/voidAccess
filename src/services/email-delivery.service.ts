@@ -167,16 +167,18 @@ function retryDelayMs(attempts: number): number {
 
 async function isDeliveryActive(db: Database, row: EmailDeliveryRow): Promise<boolean> {
   if (!row.sourceId || !row.sourceType) return true;
+  if (!row.sourceTokenHash) return false;
+  const tokenHash = row.sourceTokenHash;
   const now = new Date();
 
   if (row.sourceType === "email_verification") {
-    const tokenHash = row.sourceTokenHash;
     const [verification] = await db
       .select({ tokenHash: emailVerificationTokens.tokenHash })
       .from(emailVerificationTokens)
       .where(
         and(
           eq(emailVerificationTokens.userId, row.sourceId),
+          eq(emailVerificationTokens.tokenHash, tokenHash),
           isNull(emailVerificationTokens.usedAt),
           gt(emailVerificationTokens.expiresAt, now),
         ),
@@ -186,7 +188,6 @@ async function isDeliveryActive(db: Database, row: EmailDeliveryRow): Promise<bo
   }
 
   if (row.sourceType === "invitation") {
-    const tokenHash = row.sourceTokenHash;
     const [invite] = await db
       .select({ tokenHash: invites.tokenHash })
       .from(invites)
@@ -275,6 +276,7 @@ async function markEmailSent(
       status: "sent",
       providerMessageId,
       sentAt: now,
+      terminalAt: now,
       lockedAt: null,
       leaseId: null,
       textBody: null,
@@ -303,6 +305,7 @@ async function markEmailFailed(db: Database, row: EmailDeliveryRow, error: unkno
       nextAttemptAt: permanent
         ? row.nextAttemptAt
         : new Date(now.getTime() + retryDelayMs(row.attempts)),
+      terminalAt: permanent ? now : null,
       lockedAt: null,
       leaseId: null,
       lastError: message.slice(0, 1000),
@@ -324,6 +327,7 @@ async function markEmailObsolete(db: Database, row: EmailDeliveryRow): Promise<v
     .update(emailDeliveries)
     .set({
       status: "failed",
+      terminalAt: new Date(),
       lockedAt: null,
       leaseId: null,
       lastError: "Email source token is no longer active",
@@ -390,31 +394,36 @@ export function startEmailDeliveryWorker(
   db: Database,
   provider: EmailProvider,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
-): () => void {
+): () => Promise<void> {
   let stopped = false;
   let running = false;
+  let activeRun: Promise<void> = Promise.resolve();
 
-  const run = async (): Promise<void> => {
+  const run = (): void => {
     if (stopped || running) return;
     running = true;
-    try {
-      const summary = await processEmailDeliveries(db, provider);
-      if (summary.claimed > 0) {
-        logger.info(summary, "Email delivery batch processed");
+    activeRun = (async () => {
+      try {
+        const summary = await processEmailDeliveries(db, provider);
+        if (summary.claimed > 0) {
+          logger.info(summary, "Email delivery batch processed");
+        }
+      } catch (error) {
+        logger.error({ err: error }, "Email delivery worker batch failed");
+      } finally {
+        running = false;
       }
-    } catch (error) {
-      logger.error({ err: error }, "Email delivery worker batch failed");
-    } finally {
-      running = false;
-    }
+    })();
+    void activeRun;
   };
 
-  void run();
-  const timer = setInterval(() => void run(), pollIntervalMs);
+  run();
+  const timer = setInterval(run, pollIntervalMs);
   timer.unref();
 
-  return () => {
+  return async () => {
     stopped = true;
     clearInterval(timer);
+    await activeRun;
   };
 }

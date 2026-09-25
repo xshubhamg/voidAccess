@@ -21,7 +21,11 @@ export async function issueEmailVerificationToken(
   userId: string,
 ): Promise<string> {
   const token = createVerificationToken();
-  await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, userId));
+  await db
+    .delete(emailVerificationTokens)
+    .where(
+      and(eq(emailVerificationTokens.userId, userId), isNull(emailVerificationTokens.legalHoldAt)),
+    );
   await db.insert(emailVerificationTokens).values({
     userId,
     tokenHash: hashToken(token),

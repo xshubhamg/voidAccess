@@ -88,6 +88,7 @@ sequenceDiagram
 8. Every mutating action records an audit event in the same database transaction as the mutation. Verification and invitation mutations also enqueue their delivery in that transaction.
 9. Organization audit records survive organization deletion with a null organization reference; actor references are nulled when a user is deleted.
 10. Permission cache entries are versioned. A role permission update increments the database version, making old cache entries unreachable.
+11. Retention cleanup removes terminal operational data after 30 days and audit logs after 365 days, in batches. A legal hold must override automatic deletion.
 
 ## Deployment topology
 
@@ -99,7 +100,7 @@ sequenceDiagram
 - Rate limits use the shared Redis store. Redis failures fail the limiter closed rather than allowing an untracked request flood; alert on Redis availability and latency.
 - Run migrations as a release step before starting new application instances. The current `0003_snapshot.json` records the post-hardening schema; the historical `0002` migration predates snapshot metadata, so future schema changes should be reviewed against the migration SQL as well as the current snapshot.
 - Configure structured log shipping, error alerting, database saturation alerts, and Redis failure alerts.
-- Define retention jobs for sessions, consumed verification tokens, expired/accepted invitations, sent/failed email deliveries, and audit data. Legal-hold requirements override deletion.
+- Retention cleanup runs in bounded batches every hour by default. `RETENTION_TERMINAL_DAYS` defaults to 30 and `RETENTION_AUDIT_DAYS` defaults to 365. Legal-hold requirements override deletion.
 - Integrate a durable email delivery adapter for verification and invitation messages. In development only, the API may return tokens to make local testing possible.
 
 ### Readiness and failure behavior
@@ -126,4 +127,5 @@ sequenceDiagram
 | Membership-derived tenant context | Route ownership and membership are server-derived | Non-members receive a 404 tenant response |
 | Restricted role foreign keys | Application checks alone have a check/delete race | Database rejects unsafe role deletion |
 | Transactional email outbox | Provider availability must not invalidate committed account or invitation mutations | A worker and retention policy are required in addition to Resend credentials |
+| Batched retention cleanup | Large cleanup jobs must not hold unbounded table locks or delete active operational data | Terminal data defaults to 30 days; audit data defaults to 365 days |
 | Development token responses | Local integration needs a way to obtain verification and invite tokens | Production must use the Resend outbox worker |

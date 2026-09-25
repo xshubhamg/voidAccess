@@ -50,6 +50,13 @@
       "when": 1790314566849,
       "tag": "0006_email_outbox_source_hash",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790317273894,
+      "tag": "0007_retention_safety",
+      "breakpoints": true
     }
   ]
 }

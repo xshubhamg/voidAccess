@@ -139,6 +139,8 @@ export const sessions = pgTable(
     ipAddress: varchar("ip_address", { length: 45 }),
     userAgent: text("user_agent"),
     status: sessionStatus("status").default("active").notNull(),
+    statusChangedAt: timestamp("status_changed_at", { withTimezone: true }).defaultNow().notNull(),
+    legalHoldAt: timestamp("legal_hold_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
@@ -147,6 +149,8 @@ export const sessions = pgTable(
     index("sessions_user_id_idx").on(table.userId),
     uniqueIndex("sessions_refresh_token_hash_unique_idx").on(table.refreshTokenHash),
     index("sessions_status_idx").on(table.status),
+    index("sessions_status_changed_at_idx").on(table.statusChangedAt),
+    index("sessions_legal_hold_at_idx").on(table.legalHoldAt),
   ],
 );
 
@@ -160,11 +164,13 @@ export const emailVerificationTokens = pgTable(
     tokenHash: text("token_hash").notNull().unique(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     usedAt: timestamp("used_at", { withTimezone: true }),
+    legalHoldAt: timestamp("legal_hold_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     index("email_verification_tokens_user_id_idx").on(table.userId),
     index("email_verification_tokens_expires_at_idx").on(table.expiresAt),
+    index("email_verification_tokens_legal_hold_at_idx").on(table.legalHoldAt),
   ],
 );
 
@@ -185,6 +191,8 @@ export const invites = pgTable(
       .references(() => roles.id, { onDelete: "restrict", onUpdate: "cascade" }),
     tokenHash: text("token_hash").notNull().unique(),
     status: inviteStatus("status").default("pending").notNull(),
+    statusChangedAt: timestamp("status_changed_at", { withTimezone: true }).defaultNow().notNull(),
+    legalHoldAt: timestamp("legal_hold_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
@@ -194,6 +202,8 @@ export const invites = pgTable(
     index("invites_invited_by_user_id_idx").on(table.invitedByUserId),
     index("invites_role_id_idx").on(table.roleId),
     index("invites_email_idx").on(table.email),
+    index("invites_status_changed_at_idx").on(table.statusChangedAt),
+    index("invites_legal_hold_at_idx").on(table.legalHoldAt),
     uniqueIndex("invites_pending_organization_email_unique_idx")
       .on(table.organizationId, sql`lower(${table.email})`)
       .where(sql`${table.status} = 'pending'`),
@@ -220,6 +230,8 @@ export const emailDeliveries = pgTable(
     providerMessageId: text("provider_message_id"),
     lastError: text("last_error"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
+    terminalAt: timestamp("terminal_at", { withTimezone: true }),
+    legalHoldAt: timestamp("legal_hold_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
@@ -227,6 +239,8 @@ export const emailDeliveries = pgTable(
     index("email_deliveries_status_next_attempt_at_idx").on(table.status, table.nextAttemptAt),
     index("email_deliveries_status_locked_at_idx").on(table.status, table.lockedAt),
     index("email_deliveries_source_type_source_id_idx").on(table.sourceType, table.sourceId),
+    index("email_deliveries_terminal_at_idx").on(table.terminalAt),
+    index("email_deliveries_legal_hold_at_idx").on(table.legalHoldAt),
   ],
 );
 
@@ -248,12 +262,14 @@ export const auditLogs = pgTable(
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
     ipAddress: varchar("ip_address", { length: 45 }),
     userAgent: text("user_agent"),
+    legalHoldAt: timestamp("legal_hold_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
     index("audit_logs_organization_id_idx").on(table.organizationId),
     index("audit_logs_actor_id_idx").on(table.actorId),
     index("audit_logs_created_at_idx").on(table.createdAt),
+    index("audit_logs_legal_hold_at_idx").on(table.legalHoldAt),
   ],
 );
 

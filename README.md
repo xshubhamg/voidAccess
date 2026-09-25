@@ -64,7 +64,7 @@ bunx tsc --noEmit
 - Run `drizzle-kit migrate` as a release step before starting new application instances.
 - The built-in rate limiter uses Redis so limits are shared across API replicas. Treat Redis availability as part of the request-path availability budget.
 - Configure `RESEND_API_KEY`, a verified `EMAIL_FROM`, and an HTTPS `APP_URL` in production. The application uses a PostgreSQL email outbox and background worker with retries and Resend idempotency keys.
-- Define retention jobs for sessions, verification tokens, invitations, email deliveries, and audit records before production launch.
+- Retention cleanup runs every hour by default, deleting terminal sessions, verification tokens, invitations, and email deliveries after 30 days and audit logs after 365 days. Configure the windows with `RETENTION_TERMINAL_DAYS`, `RETENTION_AUDIT_DAYS`, and `RETENTION_CLEANUP_INTERVAL`; apply legal holds before deletion.
 - Monitor `/health/ready`, PostgreSQL saturation, Redis failures, authentication failures, and audit-write failures.
 
 The system architecture, trust boundaries, invariants, Mermaid diagrams, and decision register are documented in [docs/architecture.md](docs/architecture.md). Domain vocabulary is in [CONTEXT.md](CONTEXT.md), and durable decisions are recorded in [docs/adr](docs/adr/).

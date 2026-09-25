@@ -30,6 +30,12 @@ export const envSchema = z
       .string()
       .min(1, "EMAIL_OUTBOX_ENCRYPTION_KEY is required")
       .optional(),
+    RETENTION_TERMINAL_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
+    RETENTION_AUDIT_DAYS: z.coerce.number().int().min(1).max(3650).default(365),
+    RETENTION_CLEANUP_INTERVAL: z
+      .string()
+      .regex(/^\d+[smhd]$/, "RETENTION_CLEANUP_INTERVAL must be a duration")
+      .default("1h"),
   })
   .superRefine((values, context) => {
     if (
@@ -60,6 +66,26 @@ export const envSchema = z
         path: ["APP_URL"],
         message: "APP_URL must use HTTPS in production",
       });
+    }
+
+    const cleanupMatch = /^(\d+)([smhd])$/.exec(values.RETENTION_CLEANUP_INTERVAL);
+    if (cleanupMatch) {
+      const unitMs =
+        cleanupMatch[2] === "s"
+          ? 1_000
+          : cleanupMatch[2] === "m"
+            ? 60_000
+            : cleanupMatch[2] === "h"
+              ? 3_600_000
+              : 86_400_000;
+      const intervalMs = Number(cleanupMatch[1]) * unitMs;
+      if (intervalMs < 60_000 || intervalMs > 86_400_000) {
+        context.addIssue({
+          code: "custom",
+          path: ["RETENTION_CLEANUP_INTERVAL"],
+          message: "RETENTION_CLEANUP_INTERVAL must be between 1m and 24h",
+        });
+      }
     }
 
     if (values.JWT_SECRET === values.JWT_REFRESH_SECRET) {

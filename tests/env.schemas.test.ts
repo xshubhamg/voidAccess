@@ -57,6 +57,14 @@ describe("envSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects unsafe cleanup intervals", () => {
+    const result = envSchema.safeParse({
+      ...validEnvironment,
+      RETENTION_CLEANUP_INTERVAL: "0s",
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects identical signing secrets", () => {
     const result = envSchema.safeParse({
       ...validEnvironment,

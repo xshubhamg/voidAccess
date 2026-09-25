@@ -196,7 +196,7 @@ export async function refreshSession(
     if (!tokenMatchesCurrentSession) {
       await tx
         .update(sessions)
-        .set({ status: "revoked" })
+        .set({ status: "revoked", statusChangedAt: new Date() })
         .where(and(eq(sessions.userId, session.userId), eq(sessions.status, "active")));
       return { kind: "reuse" as const };
     }
@@ -204,13 +204,16 @@ export async function refreshSession(
     if (session.status !== "active") {
       await tx
         .update(sessions)
-        .set({ status: "revoked" })
+        .set({ status: "revoked", statusChangedAt: new Date() })
         .where(and(eq(sessions.userId, session.userId), eq(sessions.status, "active")));
       return { kind: "reuse" as const };
     }
 
     if (session.expiresAt <= now) {
-      await tx.update(sessions).set({ status: "expired" }).where(eq(sessions.id, session.id));
+      await tx
+        .update(sessions)
+        .set({ status: "expired", statusChangedAt: new Date() })
+        .where(eq(sessions.id, session.id));
       return { kind: "expired" as const };
     }
 
@@ -250,7 +253,7 @@ export async function refreshSession(
     if (!rotated) {
       await tx
         .update(sessions)
-        .set({ status: "revoked" })
+        .set({ status: "revoked", statusChangedAt: new Date() })
         .where(and(eq(sessions.userId, session.userId), eq(sessions.status, "active")));
       return { kind: "reuse" as const };
     }
@@ -295,7 +298,7 @@ export async function logoutSession(
   await db.transaction(async (tx) => {
     const [revoked] = await tx
       .update(sessions)
-      .set({ status: "revoked" })
+      .set({ status: "revoked", statusChangedAt: new Date() })
       .where(
         and(
           eq(sessions.refreshTokenHash, tokenHash),
@@ -319,7 +322,7 @@ export async function revokeAllSessions(
   await db.transaction(async (tx) => {
     const revoked = await tx
       .update(sessions)
-      .set({ status: "revoked" })
+      .set({ status: "revoked", statusChangedAt: new Date() })
       .where(and(eq(sessions.userId, userId), eq(sessions.status, "active")))
       .returning({ id: sessions.id });
 

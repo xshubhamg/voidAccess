@@ -88,7 +88,7 @@ export async function createInvite(
 
       await tx
         .update(invites)
-        .set({ status: "expired" })
+        .set({ status: "expired", statusChangedAt: new Date() })
         .where(
           and(
             eq(invites.organizationId, input.organizationId),
@@ -207,7 +207,7 @@ export async function revokeInvite(
   await db.transaction(async (tx) => {
     const [revoked] = await tx
       .update(invites)
-      .set({ status: "revoked" })
+      .set({ status: "revoked", statusChangedAt: new Date() })
       .where(
         and(
           eq(invites.organizationId, input.organizationId),
@@ -261,7 +261,10 @@ export async function acceptInvite(
     }
 
     if (invite.expiresAt <= now) {
-      await tx.update(invites).set({ status: "expired" }).where(eq(invites.id, invite.id));
+      await tx
+        .update(invites)
+        .set({ status: "expired", statusChangedAt: new Date() })
+        .where(eq(invites.id, invite.id));
       throw new AppError("Invitation is invalid or expired", 400, "INVITE_EXPIRED");
     }
 
@@ -298,7 +301,7 @@ export async function acceptInvite(
     });
     await tx
       .update(invites)
-      .set({ status: "accepted", acceptedAt: now })
+      .set({ status: "accepted", acceptedAt: now, statusChangedAt: now })
       .where(eq(invites.id, invite.id));
 
     const result = { organizationId: invite.organizationId, roleId: invite.roleId };
