@@ -1,6 +1,8 @@
 import * as z from "zod";
 
-import { uuidSchema } from "./common.schemas.ts";
+import { paginationSchema, uuidSchema } from "./common.schemas.ts";
+
+export const memberListQuerySchema = paginationSchema;
 
 export const memberParamsSchema = z.object({
   orgId: uuidSchema,

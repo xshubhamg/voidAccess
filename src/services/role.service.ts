@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import type { Database } from "../database/client.ts";
 import {
@@ -22,6 +22,13 @@ export interface RoleSummary {
   isDefault: boolean;
   createdAt: Date;
   permissions: string[];
+}
+
+export interface RoleListResult {
+  items: RoleSummary[];
+  page: number;
+  limit: number;
+  total: number;
 }
 
 interface CreateRoleInput {
@@ -57,42 +64,49 @@ type RoleRow = typeof roles.$inferSelect;
 export async function listOrganizationRoles(
   db: Database,
   organizationId: string,
-): Promise<RoleSummary[]> {
-  const rows = await db
-    .select({
-      role: roles,
-      permissionName: permissions.name,
-    })
-    .from(roles)
-    .leftJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
-    .leftJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
-    .where(or(eq(roles.organizationId, organizationId), isNull(roles.organizationId)));
+  pagination: { page: number; limit: number },
+): Promise<RoleListResult> {
+  const visibleRoles = or(eq(roles.organizationId, organizationId), isNull(roles.organizationId));
+  const [roleRows, [total]] = await Promise.all([
+    db
+      .select({ role: roles })
+      .from(roles)
+      .where(visibleRoles)
+      .orderBy(sql`${roles.organizationId} is null desc`, asc(roles.name), asc(roles.id))
+      .limit(pagination.limit)
+      .offset((pagination.page - 1) * pagination.limit),
+    db.select({ value: count() }).from(roles).where(visibleRoles),
+  ]);
 
-  const roleRows = new Map<string, RoleRow>();
-  const permissionNamesById = new Map<string, string[]>();
-
-  for (const row of rows) {
-    if (!roleRows.has(row.role.id)) {
-      roleRows.set(row.role.id, row.role);
-      permissionNamesById.set(row.role.id, []);
-    }
-    if (row.permissionName !== null) {
-      permissionNamesById.get(row.role.id)?.push(row.permissionName);
-    }
+  if (roleRows.length === 0) {
+    return {
+      items: [],
+      page: pagination.page,
+      limit: pagination.limit,
+      total: Number(total?.value ?? 0),
+    };
   }
 
-  return [...roleRows.entries()]
-    .map(([roleId, role]) => toSummary(role, permissionNamesById.get(roleId) ?? []))
-    .toSorted((a, b) => {
-      const aIsSystem = a.organizationId === null;
-      const bIsSystem = b.organizationId === null;
+  const roleIds = roleRows.map((row) => row.role.id);
+  const mappings = await db
+    .select({ roleId: rolePermissions.roleId, permissionName: permissions.name })
+    .from(rolePermissions)
+    .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+    .where(inArray(rolePermissions.roleId, roleIds));
 
-      if (aIsSystem !== bIsSystem) {
-        return aIsSystem ? -1 : 1;
-      }
+  const permissionNamesById = new Map<string, string[]>();
+  for (const mapping of mappings) {
+    const names = permissionNamesById.get(mapping.roleId) ?? [];
+    names.push(mapping.permissionName);
+    permissionNamesById.set(mapping.roleId, names);
+  }
 
-      return a.name.localeCompare(b.name);
-    });
+  return {
+    items: roleRows.map(({ role }) => toSummary(role, permissionNamesById.get(role.id) ?? [])),
+    page: pagination.page,
+    limit: pagination.limit,
+    total: Number(total?.value ?? 0),
+  };
 }
 
 /** Fetches a single role visible to the organization (custom or system). */

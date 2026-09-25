@@ -27,8 +27,8 @@ The application validates environment configuration on startup. Required setting
 - `/health` liveness and `/health/ready` PostgreSQL + Redis readiness
 - `/auth` registration, login, refresh rotation, logout, logout-all, and email verification
 - `/organizations` organization list, create, update, delete, and ownership transfer
-- `/organizations/:orgId/roles` tenant-scoped role CRUD
-- `/organizations/:orgId/members` member list, role updates, and removal
+- `/organizations/:orgId/roles` tenant-scoped paginated role CRUD
+- `/organizations/:orgId/members` paginated member list, role updates, and removal
 - `/organizations/:orgId/invites` invitation list, create, and revoke
 - `/invites/accept` authenticated invitation acceptance
 - `/organizations/:orgId/audit-logs` permission-gated audit history

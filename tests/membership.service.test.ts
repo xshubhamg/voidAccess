@@ -228,7 +228,7 @@ describe("removeMember", () => {
 });
 
 describe("listMembers", () => {
-  it("selects public fields with tenant filtering and stable ordering", async () => {
+  it("selects public fields with tenant filtering, stable ordering, and pagination", async () => {
     const row = {
       userId: MEMBER_USER_ID,
       email: "member@example.com",
@@ -240,25 +240,47 @@ describe("listMembers", () => {
     let fields: unknown;
     let predicate: SQL | undefined;
     let ordering: SQL[] = [];
+    let pagination: { limit?: number; offset?: number } = {};
     const chain = {
       innerJoin: () => chain,
       where: (value: SQL) => {
         predicate = value;
         return chain;
       },
-      orderBy: async (...values: SQL[]) => {
+      orderBy: (...values: SQL[]) => {
         ordering = values;
-        return [row];
+        return chain;
+      },
+      limit: (value: number) => {
+        pagination.limit = value;
+        return chain;
+      },
+      offset: (value: number) => {
+        pagination.offset = value;
+        return Promise.resolve([row]);
       },
     };
     const db = {
       select: (value: unknown) => {
+        if (typeof value === "object" && value !== null && "value" in value) {
+          return {
+            from: () => ({
+              where: async () => [{ value: 1 }],
+            }),
+          };
+        }
         fields = value;
         return { from: () => chain };
       },
     } as unknown as Database;
-    expect(await listMembers(db, ORG_ID)).toEqual([row]);
+    expect(await listMembers(db, ORG_ID, { page: 2, limit: 10 })).toEqual({
+      items: [row],
+      page: 2,
+      limit: 10,
+      total: 1,
+    });
     expect(Object.keys(fields as object).toSorted()).toEqual(Object.keys(row).toSorted());
+    expect(pagination).toEqual({ limit: 10, offset: 10 });
     const dialect = new PgDialect();
     const query = dialect.sqlToQuery(predicate!);
     expect(query.sql).toContain('"memberships"."organization_id"');

@@ -128,5 +128,6 @@ sequenceDiagram
 | Restricted role foreign keys | Application checks alone have a check/delete race | Database rejects unsafe role deletion |
 | Transactional email outbox | Provider availability must not invalidate committed account or invitation mutations | A worker and retention policy are required in addition to Resend credentials |
 | Batched retention cleanup | Large cleanup jobs must not hold unbounded table locks or delete active operational data | Terminal data defaults to 30 days; audit data defaults to 365 days |
+| Bounded member and role pagination | Tenant size must not create unbounded reads or response memory usage | List endpoints cap `limit` at 100 and return page metadata |
 | Readiness depends on PostgreSQL and Redis | Traffic must not reach an instance that cannot serve authorization rate limits | Redis outage removes the instance from the load balancer |
 | Development token responses | Local integration needs a way to obtain verification and invite tokens | Production must use the Resend outbox worker |

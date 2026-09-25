@@ -10,6 +10,7 @@ import { AppError } from "../utils/AppError.ts";
 import { requestAuditContext } from "../utils/auditContext.ts";
 import { asyncHandler } from "../utils/asyncHandler.ts";
 import {
+  memberListQuerySchema,
   memberParamsSchema,
   memberIdParamsSchema,
   updateMemberSchema,
@@ -20,7 +21,7 @@ export const memberRouter: Router = Router({ mergeParams: true });
 memberRouter.get(
   "/",
   authenticate,
-  validateRequest({ params: memberParamsSchema }),
+  validateRequest({ params: memberParamsSchema, query: memberListQuerySchema }),
   resolveTenant,
   requirePermission("member.read"),
   asyncHandler(async (req, res) => {
@@ -28,12 +29,15 @@ memberRouter.get(
       throw new AppError("Tenant context missing", 500, "TENANT_CONTEXT_MISSING");
     }
 
-    const members = await listMembers(db, req.organization.id);
+    const result = await listMembers(db, req.organization.id, {
+      page: Number(req.query.page),
+      limit: Number(req.query.limit),
+    });
 
     res.status(200).json({
       success: true,
       message: "Members retrieved",
-      data: { members },
+      data: { items: result.items, page: result.page, limit: result.limit, total: result.total },
     });
   }),
 );

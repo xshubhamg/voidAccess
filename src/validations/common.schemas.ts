@@ -12,7 +12,7 @@ export const passwordSchema = z
   .regex(/[0-9]/, "Password must contain a number");
 
 export const paginationSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(1_000_000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 

@@ -30,6 +30,7 @@ function request(): Request {
   return {
     params: { orgId, userId },
     body: { roleId, actorUserId: "ignored", organizationId: "ignored" },
+    query: { page: 1, limit: 20 },
     organization: { id: orgId },
     user: { id: actorId },
   } as unknown as Request;
@@ -75,12 +76,21 @@ describe("member routes", () => {
   }
 
   it("lists members of the resolved organization", async () => {
-    const list = spyOn(service, "listMembers").mockResolvedValue([]);
+    const list = spyOn(service, "listMembers").mockResolvedValue({
+      items: [],
+      page: 1,
+      limit: 20,
+      total: 0,
+    });
     const result = await invoke(route("get").stack[4]!.handle, request());
-    expect(list).toHaveBeenCalledWith(expect.anything(), orgId);
+    expect(list).toHaveBeenCalledWith(expect.anything(), orgId, { page: 1, limit: 20 });
     expect(result).toEqual({
       status: 200,
-      body: { success: true, message: "Members retrieved", data: { members: [] } },
+      body: {
+        success: true,
+        message: "Members retrieved",
+        data: { items: [], page: 1, limit: 20, total: 0 },
+      },
     });
   });
 

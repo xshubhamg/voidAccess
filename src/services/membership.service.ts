@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 
 import type { Database } from "../database/client.ts";
 import { memberships, organizations, roles, users } from "../database/schema/index.ts";
@@ -126,30 +126,47 @@ export async function updateMemberRole(
   });
 }
 
-export async function listMembers(db: Database, organizationId: string): Promise<MemberSummary[]> {
-  const rows = await db
-    .select({
-      userId: memberships.userId,
-      email: users.email,
-      name: users.name,
-      roleId: memberships.roleId,
-      roleName: roles.name,
-      joinedAt: memberships.joinedAt,
-    })
-    .from(memberships)
-    .innerJoin(users, eq(users.id, memberships.userId))
-    .innerJoin(roles, eq(roles.id, memberships.roleId))
-    .where(eq(memberships.organizationId, organizationId))
-    .orderBy(asc(memberships.joinedAt), asc(memberships.userId));
+export async function listMembers(
+  db: Database,
+  organizationId: string,
+  pagination: { page: number; limit: number },
+): Promise<{ items: MemberSummary[]; page: number; limit: number; total: number }> {
+  const [rows, [total]] = await Promise.all([
+    db
+      .select({
+        userId: memberships.userId,
+        email: users.email,
+        name: users.name,
+        roleId: memberships.roleId,
+        roleName: roles.name,
+        joinedAt: memberships.joinedAt,
+      })
+      .from(memberships)
+      .innerJoin(users, eq(users.id, memberships.userId))
+      .innerJoin(roles, eq(roles.id, memberships.roleId))
+      .where(eq(memberships.organizationId, organizationId))
+      .orderBy(asc(memberships.joinedAt), asc(memberships.userId))
+      .limit(pagination.limit)
+      .offset((pagination.page - 1) * pagination.limit),
+    db
+      .select({ value: count() })
+      .from(memberships)
+      .where(eq(memberships.organizationId, organizationId)),
+  ]);
 
-  return rows.map((row) => ({
-    userId: row.userId,
-    email: row.email,
-    name: row.name,
-    roleId: row.roleId,
-    roleName: row.roleName,
-    joinedAt: row.joinedAt,
-  }));
+  return {
+    items: rows.map((row) => ({
+      userId: row.userId,
+      email: row.email,
+      name: row.name,
+      roleId: row.roleId,
+      roleName: row.roleName,
+      joinedAt: row.joinedAt,
+    })),
+    page: pagination.page,
+    limit: pagination.limit,
+    total: Number(total?.value ?? 0),
+  };
 }
 
 export async function removeMember(db: Database, input: RemoveMemberInput): Promise<void> {

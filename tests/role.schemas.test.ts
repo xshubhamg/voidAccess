@@ -1,7 +1,11 @@
 import { describe, expect, it } from "bun:test";
 
 import { isReservedRoleName } from "../src/validations/role.schemas.ts";
-import { createRoleSchema, updateRoleSchema } from "../src/validations/role.schemas.ts";
+import {
+  createRoleSchema,
+  roleListQuerySchema,
+  updateRoleSchema,
+} from "../src/validations/role.schemas.ts";
 
 describe("createRoleSchema", () => {
   it("accepts a valid role with defaults for description and permissions", () => {
@@ -65,6 +69,13 @@ describe("updateRoleSchema", () => {
 
   it("rejects reserved names on update as well", () => {
     expect(() => updateRoleSchema.parse({ name: "owner" })).toThrow();
+  });
+});
+
+describe("roleListQuerySchema", () => {
+  it("uses bounded pagination defaults", () => {
+    expect(roleListQuerySchema.parse({})).toEqual({ page: 1, limit: 20 });
+    expect(() => roleListQuerySchema.parse({ limit: 101 })).toThrow();
   });
 });
 

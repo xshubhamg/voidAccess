@@ -1,6 +1,6 @@
 import * as z from "zod";
 
-import { nonEmptyString, uuidSchema } from "./common.schemas.ts";
+import { nonEmptyString, paginationSchema, uuidSchema } from "./common.schemas.ts";
 
 export const RESERVED_ROLE_NAMES = ["Owner", "Admin", "Member", "Viewer"] as const;
 
@@ -51,6 +51,8 @@ export const updateRoleSchema = z
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field must be provided",
   });
+
+export const roleListQuerySchema = paginationSchema;
 
 export const roleParamsSchema = z.object({
   orgId: uuidSchema,

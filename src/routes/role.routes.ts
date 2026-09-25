@@ -18,6 +18,7 @@ import { asyncHandler } from "../utils/asyncHandler.ts";
 import {
   createRoleSchema,
   roleIdParamsSchema,
+  roleListQuerySchema,
   roleParamsSchema,
   updateRoleSchema,
 } from "../validations/role.schemas.ts";
@@ -27,7 +28,7 @@ export const roleRouter: Router = Router({ mergeParams: true });
 roleRouter.get(
   "/",
   authenticate,
-  validateRequest({ params: roleParamsSchema }),
+  validateRequest({ params: roleParamsSchema, query: roleListQuerySchema }),
   resolveTenant,
   requirePermission("role.read"),
   asyncHandler(async (req, res) => {
@@ -35,12 +36,15 @@ roleRouter.get(
       throw new AppError("Tenant context missing", 500, "TENANT_CONTEXT_MISSING");
     }
 
-    const roles = await listOrganizationRoles(db, req.organization.id);
+    const result = await listOrganizationRoles(db, req.organization.id, {
+      page: Number(req.query.page),
+      limit: Number(req.query.limit),
+    });
 
     res.status(200).json({
       success: true,
       message: "Roles retrieved",
-      data: { roles },
+      data: { items: result.items, page: result.page, limit: result.limit, total: result.total },
     });
   }),
 );
