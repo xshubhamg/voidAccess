@@ -24,7 +24,7 @@ The application validates environment configuration on startup. Required setting
 
 ## API surface
 
-- `/health` liveness and `/health/ready` database readiness
+- `/health` liveness and `/health/ready` PostgreSQL + Redis readiness
 - `/auth` registration, login, refresh rotation, logout, logout-all, and email verification
 - `/organizations` organization list, create, update, delete, and ownership transfer
 - `/organizations/:orgId/roles` tenant-scoped role CRUD
@@ -58,13 +58,13 @@ bunx tsc --noEmit
 
 ## Production hardening
 
-- Run behind TLS and a trusted reverse proxy; configure `TRUST_PROXY_HOPS` for the real proxy chain.
+- Run behind TLS and a trusted reverse proxy; configure `TRUST_PROXY_HOPS` and proxy-level request/header/keep-alive timeouts for the real chain. Bun does not reliably enforce Node server timeout properties.
 - Generate independent JWT secrets of at least 32 characters and store them in a secrets manager.
 - Use private PostgreSQL and Redis network access. The Compose file binds both services to loopback for local development only.
 - Run `drizzle-kit migrate` as a release step before starting new application instances.
 - The built-in rate limiter uses Redis so limits are shared across API replicas. Treat Redis availability as part of the request-path availability budget.
 - Configure `RESEND_API_KEY`, a verified `EMAIL_FROM`, and an HTTPS `APP_URL` in production. The application uses a PostgreSQL email outbox and background worker with retries and Resend idempotency keys.
 - Retention cleanup runs every hour by default, deleting terminal sessions, verification tokens, invitations, and email deliveries after 30 days and audit logs after 365 days. Configure the windows with `RETENTION_TERMINAL_DAYS`, `RETENTION_AUDIT_DAYS`, and `RETENTION_CLEANUP_INTERVAL`; apply legal holds before deletion.
-- Monitor `/health/ready`, PostgreSQL saturation, Redis failures, authentication failures, and audit-write failures.
+- Monitor `/health/ready`; it checks PostgreSQL and Redis, returns `503` when either is unavailable, and should be wired to load-balancer health checks. Monitor PostgreSQL saturation, Redis failures, authentication failures, and audit-write failures.
 
 The system architecture, trust boundaries, invariants, Mermaid diagrams, and decision register are documented in [docs/architecture.md](docs/architecture.md). Domain vocabulary is in [CONTEXT.md](CONTEXT.md), and durable decisions are recorded in [docs/adr](docs/adr/).

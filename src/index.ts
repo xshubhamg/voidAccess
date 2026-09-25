@@ -7,7 +7,7 @@ import { sendResendEmail } from "./services/resend-email.service.ts";
 import { startRetentionCleanupWorker } from "./services/retention.service.ts";
 import { logger } from "./utils/logger.ts";
 
-const SHUTDOWN_TIMEOUT_MS = 10_000;
+const SHUTDOWN_TIMEOUT_MS = 20_000;
 
 async function main(): Promise<void> {
   await connectDatabase();

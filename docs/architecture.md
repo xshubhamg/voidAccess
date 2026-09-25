@@ -94,7 +94,7 @@ sequenceDiagram
 
 ### Required production controls
 
-- Terminate TLS at a managed proxy or load balancer.
+- Terminate TLS at a managed proxy or load balancer. Configure proxy-level request, header, and keep-alive timeouts; Bun does not reliably enforce Node `http.Server` timeout properties.
 - Restrict PostgreSQL and Redis to private network paths; the checked-in Compose file is loopback-only local development.
 - Use a secrets manager for `JWT_SECRET` and `JWT_REFRESH_SECRET`. Generate independent values of at least 32 characters.
 - Rate limits use the shared Redis store. Redis failures fail the limiter closed rather than allowing an untracked request flood; alert on Redis availability and latency.
@@ -105,7 +105,7 @@ sequenceDiagram
 
 ### Readiness and failure behavior
 
-`/health` is liveness only. `/health/ready` verifies PostgreSQL. Redis is not an authorization dependency: startup may continue when Redis is unavailable, and permission resolution falls back to PostgreSQL. A Redis outage must appear in telemetry and must not cause the API to grant cached permissions without a current database role version.
+`/health` is liveness only and never checks dependencies. `/health/ready` checks PostgreSQL and Redis, returns `503` when either is unavailable, and is used by the load balancer to remove the instance from traffic. Redis is optional for authorization correctness but required for the shared rate limiter, so a Redis outage must be visible in readiness telemetry. Permission resolution still falls back to PostgreSQL when Redis is unavailable.
 
 ## Security boundaries
 
@@ -128,4 +128,5 @@ sequenceDiagram
 | Restricted role foreign keys | Application checks alone have a check/delete race | Database rejects unsafe role deletion |
 | Transactional email outbox | Provider availability must not invalidate committed account or invitation mutations | A worker and retention policy are required in addition to Resend credentials |
 | Batched retention cleanup | Large cleanup jobs must not hold unbounded table locks or delete active operational data | Terminal data defaults to 30 days; audit data defaults to 365 days |
+| Readiness depends on PostgreSQL and Redis | Traffic must not reach an instance that cannot serve authorization rate limits | Redis outage removes the instance from the load balancer |
 | Development token responses | Local integration needs a way to obtain verification and invite tokens | Production must use the Resend outbox worker |

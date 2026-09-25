@@ -5,6 +5,8 @@ import { logger } from "../utils/logger.ts";
 
 export const redis = new Redis(REDIS_URL, {
   maxRetriesPerRequest: 2,
+  connectTimeout: 2_000,
+  commandTimeout: 2_000,
 });
 
 redis.on("error", (error) => {
