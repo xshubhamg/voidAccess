@@ -4,8 +4,9 @@ import { and, asc, count, desc, eq, lte, sql } from "drizzle-orm";
 
 import { INVITE_EXPIRATION } from "../config/index.ts";
 import type { Database } from "../database/client.ts";
-import { invites, memberships, roles, users } from "../database/schema/index.ts";
+import { invites, memberships, organizations, roles, users } from "../database/schema/index.ts";
 import { recordAudit, type AuditEvent } from "./audit.service.ts";
+import { enqueueInvitationEmail } from "./email-delivery.service.ts";
 import { AppError } from "../utils/AppError.ts";
 import { isUniqueViolation } from "../utils/dbErrors.ts";
 import { hashToken, parseDurationMs } from "../utils/tokens.ts";
@@ -127,6 +128,18 @@ export async function createInvite(
         .from(roles)
         .where(eq(roles.id, invite.roleId))
         .limit(1);
+      const [organization] = await tx
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, input.organizationId))
+        .limit(1);
+
+      await enqueueInvitationEmail(tx, {
+        to: input.email,
+        token,
+        organizationName: organization?.name ?? "the organization",
+        inviteId: invite.id,
+      });
 
       if (input.audit) {
         await recordAudit(

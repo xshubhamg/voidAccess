@@ -8,6 +8,7 @@ import type { Database, DatabaseExecutor } from "../database/client.ts";
 import { sessions, users } from "../database/schema/index.ts";
 import { recordAudit, type AuditEvent } from "./audit.service.ts";
 import { issueEmailVerificationToken } from "./email-verification.service.ts";
+import { enqueueVerificationEmail } from "./email-delivery.service.ts";
 import { AppError } from "../utils/AppError.ts";
 import { isUniqueViolation } from "../utils/dbErrors.ts";
 import {
@@ -101,6 +102,11 @@ export async function registerUser(
       }
 
       const verificationToken = await issueEmailVerificationToken(tx, user.id);
+      await enqueueVerificationEmail(tx, {
+        to: user.email,
+        token: verificationToken,
+        userId: user.id,
+      });
       return { user, verificationToken };
     });
   } catch (error) {

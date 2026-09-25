@@ -6,6 +6,7 @@ import { EMAIL_VERIFICATION_EXPIRATION } from "../config/index.ts";
 import type { Database, DatabaseExecutor } from "../database/client.ts";
 import { emailVerificationTokens, users } from "../database/schema/index.ts";
 import { recordAudit, type AuditEvent } from "./audit.service.ts";
+import { enqueueVerificationEmail } from "./email-delivery.service.ts";
 import { AppError } from "../utils/AppError.ts";
 import { hashToken, parseDurationMs } from "../utils/tokens.ts";
 
@@ -37,7 +38,7 @@ export async function requestEmailVerification(
 ): Promise<string | null> {
   return db.transaction(async (tx) => {
     const [user] = await tx
-      .select({ id: users.id, emailVerified: users.emailVerified })
+      .select({ id: users.id, email: users.email, emailVerified: users.emailVerified })
       .from(users)
       .where(sql`lower(${users.email}) = ${email}`)
       .limit(1);
@@ -45,6 +46,7 @@ export async function requestEmailVerification(
     if (!user || user.emailVerified) return null;
 
     const token = await issueEmailVerificationToken(tx, user.id);
+    await enqueueVerificationEmail(tx, { to: user.email, token, userId: user.id });
     if (audit) {
       await recordAudit(tx, audit);
     }

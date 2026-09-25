@@ -46,7 +46,7 @@ flowchart TB
   Cache --> RD
 ```
 
-The database adapter is the transaction seam. Domain services receive the database executor, and multi-record mutations plus their audit event execute in one PostgreSQL transaction. External side effects such as sending email must use a durable outbox or delivery adapter; an HTTP response must never be the only delivery mechanism.
+The database adapter is the transaction seam. Domain services receive the database executor, and multi-record mutations plus their audit event and email outbox row execute in one PostgreSQL transaction. A background worker claims outbox rows with `SKIP LOCKED`, sends through Resend, retries with exponential backoff, and clears terminal message bodies. An HTTP response is never the only delivery mechanism.
 
 ## Request and authorization flow
 
@@ -85,7 +85,7 @@ sequenceDiagram
 5. Newly issued access and refresh tokens have different signing keys and explicit `typ` claims. Access authentication also requires an active, unexpired database session. Tokens issued before the claim was introduced remain accepted only during rollout because the signing keys are independent.
 6. Refresh tokens rotate once. Reuse of a rotated-away token revokes active sessions for that user.
 7. Verification and invitation tokens are stored only as SHA-256 hashes. Raw tokens are never logged or returned in production responses.
-8. Every mutating action records an audit event in the same database transaction as the mutation. Audit failures therefore fail the mutation rather than creating a false success state.
+8. Every mutating action records an audit event in the same database transaction as the mutation. Verification and invitation mutations also enqueue their delivery in that transaction.
 9. Organization audit records survive organization deletion with a null organization reference; actor references are nulled when a user is deleted.
 10. Permission cache entries are versioned. A role permission update increments the database version, making old cache entries unreachable.
 
@@ -99,7 +99,7 @@ sequenceDiagram
 - Rate limits use the shared Redis store. Redis failures fail the limiter closed rather than allowing an untracked request flood; alert on Redis availability and latency.
 - Run migrations as a release step before starting new application instances. The current `0003_snapshot.json` records the post-hardening schema; the historical `0002` migration predates snapshot metadata, so future schema changes should be reviewed against the migration SQL as well as the current snapshot.
 - Configure structured log shipping, error alerting, database saturation alerts, and Redis failure alerts.
-- Define retention jobs for sessions, consumed verification tokens, expired/accepted invitations, and audit data. Legal-hold requirements override deletion.
+- Define retention jobs for sessions, consumed verification tokens, expired/accepted invitations, sent/failed email deliveries, and audit data. Legal-hold requirements override deletion.
 - Integrate a durable email delivery adapter for verification and invitation messages. In development only, the API may return tokens to make local testing possible.
 
 ### Readiness and failure behavior
@@ -125,4 +125,5 @@ sequenceDiagram
 | Transactional audit writes | A successful mutation without its audit event violates the access-control contract | Audit insert failure rolls back the mutation |
 | Membership-derived tenant context | Route ownership and membership are server-derived | Non-members receive a 404 tenant response |
 | Restricted role foreign keys | Application checks alone have a check/delete race | Database rejects unsafe role deletion |
-| Development token responses | Local integration needs a way to obtain verification and invite tokens | Production must use an email delivery adapter |
+| Transactional email outbox | Provider availability must not invalidate committed account or invitation mutations | A worker and retention policy are required in addition to Resend credentials |
+| Development token responses | Local integration needs a way to obtain verification and invite tokens | Production must use the Resend outbox worker |

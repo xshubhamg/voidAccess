@@ -16,6 +16,12 @@ import {
 
 export const sessionStatus = pgEnum("session_status", ["active", "revoked", "expired"]);
 export const inviteStatus = pgEnum("invite_status", ["pending", "accepted", "expired", "revoked"]);
+export const emailDeliveryStatus = pgEnum("email_delivery_status", [
+  "pending",
+  "processing",
+  "sent",
+  "failed",
+]);
 
 export const users = pgTable(
   "users",
@@ -191,6 +197,36 @@ export const invites = pgTable(
     uniqueIndex("invites_pending_organization_email_unique_idx")
       .on(table.organizationId, sql`lower(${table.email})`)
       .where(sql`${table.status} = 'pending'`),
+  ],
+);
+
+export const emailDeliveries = pgTable(
+  "email_deliveries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    toEmail: varchar("to_email", { length: 320 }).notNull(),
+    subject: varchar("subject", { length: 200 }).notNull(),
+    textBody: text("text_body"),
+    htmlBody: text("html_body"),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    sourceType: varchar("source_type", { length: 40 }),
+    sourceId: uuid("source_id"),
+    sourceTokenHash: text("source_token_hash"),
+    leaseId: uuid("lease_id"),
+    status: emailDeliveryStatus("status").default("pending").notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).defaultNow().notNull(),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    providerMessageId: text("provider_message_id"),
+    lastError: text("last_error"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("email_deliveries_status_next_attempt_at_idx").on(table.status, table.nextAttemptAt),
+    index("email_deliveries_status_locked_at_idx").on(table.status, table.lockedAt),
+    index("email_deliveries_source_type_source_id_idx").on(table.sourceType, table.sourceId),
   ],
 );
 

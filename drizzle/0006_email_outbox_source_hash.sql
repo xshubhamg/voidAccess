@@ -1,0 +1,1 @@
+ALTER TABLE "email_deliveries" ADD COLUMN "source_token_hash" text;

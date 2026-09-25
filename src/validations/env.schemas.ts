@@ -23,8 +23,45 @@ export const envSchema = z
       .min(1, "EMAIL_VERIFICATION_EXPIRATION is required")
       .default("24h"),
     INVITE_EXPIRATION: z.string().min(1, "INVITE_EXPIRATION is required").default("7d"),
+    APP_URL: z.string().url("APP_URL must be a valid URL").default("http://localhost:3000"),
+    RESEND_API_KEY: z.string().min(1, "RESEND_API_KEY must not be empty").optional(),
+    EMAIL_FROM: z.string().min(1, "EMAIL_FROM must not be empty").optional(),
+    EMAIL_OUTBOX_ENCRYPTION_KEY: z
+      .string()
+      .min(1, "EMAIL_OUTBOX_ENCRYPTION_KEY is required")
+      .optional(),
   })
   .superRefine((values, context) => {
+    if (
+      values.EMAIL_OUTBOX_ENCRYPTION_KEY &&
+      Buffer.from(values.EMAIL_OUTBOX_ENCRYPTION_KEY, "base64").length !== 32
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["EMAIL_OUTBOX_ENCRYPTION_KEY"],
+        message: "EMAIL_OUTBOX_ENCRYPTION_KEY must be a base64-encoded 32-byte key",
+      });
+    }
+
+    if (
+      values.NODE_ENV === "production" &&
+      (!values.RESEND_API_KEY || !values.EMAIL_FROM || !values.EMAIL_OUTBOX_ENCRYPTION_KEY)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["RESEND_API_KEY"],
+        message: "RESEND_API_KEY and EMAIL_FROM are required in production",
+      });
+    }
+
+    if (values.NODE_ENV === "production" && !values.APP_URL.startsWith("https://")) {
+      context.addIssue({
+        code: "custom",
+        path: ["APP_URL"],
+        message: "APP_URL must use HTTPS in production",
+      });
+    }
+
     if (values.JWT_SECRET === values.JWT_REFRESH_SECRET) {
       context.addIssue({
         code: "custom",
