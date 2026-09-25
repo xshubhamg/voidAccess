@@ -3,6 +3,7 @@ import express, { type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 
 import { notFoundHandler, errorHandler } from "./middleware/errorHandler.ts";
+import { createRateLimitStore } from "./middleware/rateLimitStore.ts";
 import { TRUST_PROXY_HOPS } from "./config/index.ts";
 import { httpLogger } from "./middleware/httpLogger.ts";
 import { authRouter } from "./routes/auth.routes.ts";
@@ -26,8 +27,7 @@ export function buildApp(): express.Express {
 
   app.use(httpLogger);
 
-  app.use(express.json({ limit: "100kb" }));
-  app.use(express.urlencoded({ extended: false, limit: "100kb" }));
+  app.use("/health", healthRouter);
 
   app.use(
     rateLimit({
@@ -35,10 +35,13 @@ export function buildApp(): express.Express {
       limit: 100,
       standardHeaders: "draft-8",
       legacyHeaders: false,
+      store: createRateLimitStore("global", 15 * 60 * 1000),
     }),
   );
 
-  app.use("/health", healthRouter);
+  app.use(express.json({ limit: "100kb" }));
+  app.use(express.urlencoded({ extended: false, limit: "100kb" }));
+
   app.use("/auth", authRouter);
   app.use("/organizations", organizationRouter);
   app.use("/organizations/:orgId/roles", roleRouter);

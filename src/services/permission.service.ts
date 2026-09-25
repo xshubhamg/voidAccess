@@ -1,14 +1,14 @@
 import { eq } from "drizzle-orm";
 
 import type { Database } from "../database/client.ts";
-import { permissions, rolePermissions } from "../database/schema/index.ts";
+import { permissions, rolePermissions, roles } from "../database/schema/index.ts";
 import { redis } from "../database/redis.ts";
 import { logger } from "../utils/logger.ts";
 
 const CACHE_TTL_SECONDS = 300;
 
-function cacheKey(roleId: string): string {
-  return `rbac:role:${roleId}:permissions`;
+function cacheKey(roleId: string, permissionVersion: number): string {
+  return `rbac:role:${roleId}:v${permissionVersion}:permissions`;
 }
 
 /**
@@ -19,12 +19,31 @@ function cacheKey(roleId: string): string {
  * is queried instead.
  */
 export async function resolveRolePermissions(db: Database, roleId: string): Promise<string[]> {
-  const key = cacheKey(roleId);
+  const [role] = await db
+    .select({ permissionVersion: roles.permissionVersion })
+    .from(roles)
+    .where(eq(roles.id, roleId))
+    .limit(1);
+
+  if (!role) {
+    return [];
+  }
+
+  const key = cacheKey(roleId, role.permissionVersion);
 
   try {
     const cached = await redis.get(key);
     if (cached !== null) {
-      return JSON.parse(cached) as string[];
+      const names = JSON.parse(cached) as string[];
+      const [currentRole] = await db
+        .select({ permissionVersion: roles.permissionVersion })
+        .from(roles)
+        .where(eq(roles.id, roleId))
+        .limit(1);
+
+      if (currentRole?.permissionVersion === role.permissionVersion) {
+        return names;
+      }
     }
   } catch (error) {
     logger.warn({ err: error, roleId }, "Permission cache read failed — querying database");
@@ -50,7 +69,15 @@ export async function resolveRolePermissions(db: Database, roleId: string): Prom
 /** Drops the cached permission set for a role after its mappings change. */
 export async function invalidateRolePermissionsCache(roleId: string): Promise<void> {
   try {
-    await redis.del(cacheKey(roleId));
+    const pattern = `rbac:role:${roleId}:v*:permissions`;
+    let cursor = "0";
+    do {
+      const [nextCursor, keys] = await redis.scan(cursor, "MATCH", pattern, "COUNT", 100);
+      cursor = nextCursor;
+      if (keys.length > 0) {
+        await redis.del(...keys);
+      }
+    } while (cursor !== "0");
   } catch (error) {
     logger.warn({ err: error, roleId }, "Permission cache invalidation failed");
   }

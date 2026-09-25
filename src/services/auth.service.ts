@@ -4,8 +4,10 @@ import { hash, verify } from "@node-rs/argon2";
 import { and, eq, sql } from "drizzle-orm";
 
 import { JWT_REFRESH_EXPIRATION } from "../config/index.ts";
-import type { Database } from "../database/client.ts";
+import type { Database, DatabaseExecutor } from "../database/client.ts";
 import { sessions, users } from "../database/schema/index.ts";
+import { recordAudit, type AuditEvent } from "./audit.service.ts";
+import { issueEmailVerificationToken } from "./email-verification.service.ts";
 import { AppError } from "../utils/AppError.ts";
 import { isUniqueViolation } from "../utils/dbErrors.ts";
 import {
@@ -39,6 +41,11 @@ interface AuthResult {
   refreshToken: string;
 }
 
+interface RegistrationResult {
+  user: PublicUser;
+  verificationToken: string;
+}
+
 const REFRESH_TTL_MS = parseDurationMs(JWT_REFRESH_EXPIRATION);
 
 function toPublicUser(row: {
@@ -59,31 +66,43 @@ function toPublicUser(row: {
 
 export async function registerUser(
   db: Database,
-  input: { email: string; password: string; name: string },
-): Promise<PublicUser> {
+  input: {
+    email: string;
+    password: string;
+    name: string;
+    audit?: (user: PublicUser) => AuditEvent;
+  },
+): Promise<RegistrationResult> {
   const passwordHash = await hash(input.password);
 
   try {
-    const [user] = await db
-      .insert(users)
-      .values({
-        email: input.email,
-        passwordHash,
-        name: input.name,
-      })
-      .returning({
-        id: users.id,
-        email: users.email,
-        name: users.name,
-        emailVerified: users.emailVerified,
-        createdAt: users.createdAt,
-      });
+    return await db.transaction(async (tx) => {
+      const [user] = await tx
+        .insert(users)
+        .values({
+          email: input.email,
+          passwordHash,
+          name: input.name,
+        })
+        .returning({
+          id: users.id,
+          email: users.email,
+          name: users.name,
+          emailVerified: users.emailVerified,
+          createdAt: users.createdAt,
+        });
 
-    if (!user) {
-      throw new AppError("Failed to create account", 500, "REGISTRATION_FAILED");
-    }
+      if (!user) {
+        throw new AppError("Failed to create account", 500, "REGISTRATION_FAILED");
+      }
 
-    return user;
+      if (input.audit) {
+        await recordAudit(tx, input.audit(user));
+      }
+
+      const verificationToken = await issueEmailVerificationToken(tx, user.id);
+      return { user, verificationToken };
+    });
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new AppError("An account with this email already exists", 409, "EMAIL_ALREADY_EXISTS");
@@ -96,28 +115,32 @@ export async function loginUser(
   db: Database,
   input: { email: string; password: string },
   meta: SessionMeta,
+  audit?: (user: PublicUser) => AuditEvent,
 ): Promise<AuthResult> {
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(sql`lower(${users.email}) = ${input.email}`)
-    .limit(1);
+  return db.transaction(async (tx) => {
+    const [user] = await tx
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = ${input.email}`)
+      .limit(1);
 
-  if (!user || !(await verify(user.passwordHash, input.password))) {
-    throw new AppError("Invalid email or password", 401, "INVALID_CREDENTIALS");
-  }
+    if (!user || !(await verify(user.passwordHash, input.password))) {
+      throw new AppError("Invalid email or password", 401, "INVALID_CREDENTIALS");
+    }
 
-  if (!user.emailVerified) {
-    throw new AppError("Email verification is required", 403, "EMAIL_NOT_VERIFIED");
-  }
+    if (!user.emailVerified) {
+      throw new AppError("Email verification is required", 403, "EMAIL_NOT_VERIFIED");
+    }
 
-  return createSessionForUser(db, toPublicUser(user), meta);
+    return createSessionForUser(tx, toPublicUser(user), meta, audit);
+  });
 }
 
 async function createSessionForUser(
-  db: Database,
+  db: DatabaseExecutor,
   user: PublicUser,
   meta: SessionMeta,
+  audit?: (user: PublicUser) => AuditEvent,
 ): Promise<AuthResult> {
   const sessionId = randomUUID();
   const refreshToken = signRefreshToken(user.id, sessionId);
@@ -126,29 +149,50 @@ async function createSessionForUser(
     id: sessionId,
     userId: user.id,
     refreshTokenHash: hashToken(refreshToken),
+    refreshTokenJti: verifyRefreshToken(refreshToken).jti,
     ipAddress: meta.ipAddress,
     userAgent: meta.userAgent,
     expiresAt: new Date(Date.now() + REFRESH_TTL_MS),
   });
 
+  if (audit) {
+    await recordAudit(db, audit(user));
+  }
+
   return { user, accessToken: signAccessToken(user.id, sessionId), refreshToken };
 }
 
-export async function refreshSession(db: Database, refreshToken: string): Promise<AuthResult> {
+export async function refreshSession(
+  db: Database,
+  refreshToken: string,
+  audit?: (user: PublicUser) => AuditEvent,
+): Promise<AuthResult> {
   const payload = verifyRefreshToken(refreshToken);
   const tokenHash = hashToken(refreshToken);
   const now = new Date();
 
-  return db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx) => {
     const [session] = await tx
       .select()
       .from(sessions)
-      .where(eq(sessions.refreshTokenHash, tokenHash))
+      .where(and(eq(sessions.id, payload.sid), eq(sessions.userId, payload.sub)))
       .for("update")
       .limit(1);
 
-    if (!session || session.id !== payload.sid || session.userId !== payload.sub) {
+    if (!session) {
       throw new AppError("Refresh token is invalid", 401, "INVALID_REFRESH_TOKEN");
+    }
+
+    const tokenMatchesCurrentSession = session.refreshTokenJti
+      ? session.refreshTokenJti === payload.jti
+      : session.refreshTokenHash === tokenHash;
+
+    if (!tokenMatchesCurrentSession) {
+      await tx
+        .update(sessions)
+        .set({ status: "revoked" })
+        .where(and(eq(sessions.userId, session.userId), eq(sessions.status, "active")));
+      return { kind: "reuse" as const };
     }
 
     if (session.status !== "active") {
@@ -156,18 +200,12 @@ export async function refreshSession(db: Database, refreshToken: string): Promis
         .update(sessions)
         .set({ status: "revoked" })
         .where(and(eq(sessions.userId, session.userId), eq(sessions.status, "active")));
-
-      throw new AppError(
-        "Refresh token was already used — all sessions have been revoked",
-        401,
-        "TOKEN_REUSE_DETECTED",
-      );
+      return { kind: "reuse" as const };
     }
 
     if (session.expiresAt <= now) {
       await tx.update(sessions).set({ status: "expired" }).where(eq(sessions.id, session.id));
-
-      throw new AppError("Session has expired", 401, "SESSION_EXPIRED");
+      return { kind: "expired" as const };
     }
 
     const [user] = await tx
@@ -189,7 +227,11 @@ export async function refreshSession(db: Database, refreshToken: string): Promis
     const nextRefreshToken = signRefreshToken(session.userId, session.id);
     const [rotated] = await tx
       .update(sessions)
-      .set({ refreshTokenHash: hashToken(nextRefreshToken), lastUsedAt: now })
+      .set({
+        refreshTokenHash: hashToken(nextRefreshToken),
+        refreshTokenJti: verifyRefreshToken(nextRefreshToken).jti,
+        lastUsedAt: now,
+      })
       .where(
         and(
           eq(sessions.id, session.id),
@@ -204,41 +246,79 @@ export async function refreshSession(db: Database, refreshToken: string): Promis
         .update(sessions)
         .set({ status: "revoked" })
         .where(and(eq(sessions.userId, session.userId), eq(sessions.status, "active")));
+      return { kind: "reuse" as const };
+    }
 
-      throw new AppError(
-        "Refresh token was already used — all sessions have been revoked",
-        401,
-        "TOKEN_REUSE_DETECTED",
-      );
+    if (audit) {
+      await recordAudit(tx, audit(toPublicUser(user)));
     }
 
     return {
-      user: toPublicUser(user),
-      accessToken: signAccessToken(session.userId, session.id),
-      refreshToken: nextRefreshToken,
+      kind: "success" as const,
+      result: {
+        user: toPublicUser(user),
+        accessToken: signAccessToken(session.userId, session.id),
+        refreshToken: nextRefreshToken,
+      },
     };
   });
+
+  if (outcome.kind === "reuse") {
+    throw new AppError(
+      "Refresh token was already used — all sessions have been revoked",
+      401,
+      "TOKEN_REUSE_DETECTED",
+    );
+  }
+
+  if (outcome.kind === "expired") {
+    throw new AppError("Session has expired", 401, "SESSION_EXPIRED");
+  }
+
+  return outcome.result;
 }
 
-export async function logoutSession(db: Database, refreshToken: string): Promise<void> {
+export async function logoutSession(
+  db: Database,
+  refreshToken: string,
+  audit?: AuditEvent,
+): Promise<void> {
   const payload = verifyRefreshToken(refreshToken);
   const tokenHash = hashToken(refreshToken);
 
-  await db
-    .update(sessions)
-    .set({ status: "revoked" })
-    .where(
-      and(
-        eq(sessions.refreshTokenHash, tokenHash),
-        eq(sessions.id, payload.sid),
-        eq(sessions.status, "active"),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    const [revoked] = await tx
+      .update(sessions)
+      .set({ status: "revoked" })
+      .where(
+        and(
+          eq(sessions.refreshTokenHash, tokenHash),
+          eq(sessions.id, payload.sid),
+          eq(sessions.status, "active"),
+        ),
+      )
+      .returning({ id: sessions.id });
+
+    if (revoked && audit) {
+      await recordAudit(tx, audit);
+    }
+  });
 }
 
-export async function revokeAllSessions(db: Database, userId: string): Promise<void> {
-  await db
-    .update(sessions)
-    .set({ status: "revoked" })
-    .where(and(eq(sessions.userId, userId), eq(sessions.status, "active")));
+export async function revokeAllSessions(
+  db: Database,
+  userId: string,
+  audit?: AuditEvent,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const revoked = await tx
+      .update(sessions)
+      .set({ status: "revoked" })
+      .where(and(eq(sessions.userId, userId), eq(sessions.status, "active")))
+      .returning({ id: sessions.id });
+
+    if (revoked.length > 0 && audit) {
+      await recordAudit(tx, audit);
+    }
+  });
 }

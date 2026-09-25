@@ -2,6 +2,7 @@ import { and, asc, count, eq, isNull } from "drizzle-orm";
 
 import type { Database } from "../database/client.ts";
 import { memberships, organizations, roles } from "../database/schema/index.ts";
+import { recordAudit, type AuditEvent } from "./audit.service.ts";
 import { AppError } from "../utils/AppError.ts";
 import { isUniqueViolation } from "../utils/dbErrors.ts";
 import { slugWithRandomSuffix, slugify } from "../utils/slug.ts";
@@ -27,6 +28,7 @@ export interface OrganizationListResult {
 interface CreateOrganizationInput {
   ownerId: string;
   name: string;
+  audit?: (organization: OrganizationSummary) => AuditEvent;
 }
 
 /**
@@ -87,6 +89,10 @@ export async function createOrganization(
           roleId: ownerRole.id,
         });
 
+        if (input.audit) {
+          await recordAudit(tx, input.audit(organization));
+        }
+
         return organization;
       });
     } catch (error) {
@@ -136,36 +142,43 @@ export async function listOrganizations(
 
 export async function updateOrganization(
   db: Database,
-  input: { organizationId: string; name: string },
+  input: { organizationId: string; name: string; audit?: AuditEvent },
 ): Promise<OrganizationSummary> {
-  const [organization] = await db
-    .update(organizations)
-    .set({ name: input.name, updatedAt: new Date() })
-    .where(eq(organizations.id, input.organizationId))
-    .returning({
-      id: organizations.id,
-      name: organizations.name,
-      slug: organizations.slug,
-      ownerId: organizations.ownerId,
-      createdAt: organizations.createdAt,
-    });
+  return db.transaction(async (tx) => {
+    const [organization] = await tx
+      .update(organizations)
+      .set({ name: input.name, updatedAt: new Date() })
+      .where(eq(organizations.id, input.organizationId))
+      .returning({
+        id: organizations.id,
+        name: organizations.name,
+        slug: organizations.slug,
+        ownerId: organizations.ownerId,
+        createdAt: organizations.createdAt,
+      });
 
-  if (!organization) {
-    throw new AppError("Organization not found", 404, "ORGANIZATION_NOT_FOUND");
-  }
+    if (!organization) {
+      throw new AppError("Organization not found", 404, "ORGANIZATION_NOT_FOUND");
+    }
 
-  return organization;
+    if (input.audit) {
+      await recordAudit(tx, input.audit);
+    }
+
+    return organization;
+  });
 }
 
 export async function transferOrganizationOwnership(
   db: Database,
-  input: { organizationId: string; newOwnerId: string },
+  input: { organizationId: string; newOwnerId: string; audit?: AuditEvent },
 ): Promise<{ organizationId: string; ownerId: string }> {
   return db.transaction(async (tx) => {
     const [organization] = await tx
       .select({ id: organizations.id, ownerId: organizations.ownerId })
       .from(organizations)
       .where(eq(organizations.id, input.organizationId))
+      .for("update")
       .limit(1);
 
     if (!organization) {
@@ -185,6 +198,7 @@ export async function transferOrganizationOwnership(
           eq(memberships.userId, input.newOwnerId),
         ),
       )
+      .for("update")
       .limit(1);
 
     if (!target) {
@@ -221,17 +235,34 @@ export async function transferOrganizationOwnership(
       .set({ ownerId: input.newOwnerId, updatedAt: new Date() })
       .where(eq(organizations.id, input.organizationId));
 
+    if (input.audit) {
+      await recordAudit(tx, input.audit);
+    }
+
     return { organizationId: organization.id, ownerId: input.newOwnerId };
   });
 }
 
-export async function deleteOrganization(db: Database, organizationId: string): Promise<void> {
-  const [deleted] = await db
-    .delete(organizations)
-    .where(eq(organizations.id, organizationId))
-    .returning({ id: organizations.id });
+export async function deleteOrganization(
+  db: Database,
+  input: { organizationId: string; audit?: AuditEvent },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [organization] = await tx
+      .select({ id: organizations.id, name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, input.organizationId))
+      .for("update")
+      .limit(1);
 
-  if (!deleted) {
-    throw new AppError("Organization not found", 404, "ORGANIZATION_NOT_FOUND");
-  }
+    if (!organization) {
+      throw new AppError("Organization not found", 404, "ORGANIZATION_NOT_FOUND");
+    }
+
+    if (input.audit) {
+      await recordAudit(tx, input.audit);
+    }
+
+    await tx.delete(organizations).where(eq(organizations.id, input.organizationId));
+  });
 }

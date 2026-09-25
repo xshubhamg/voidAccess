@@ -1,7 +1,6 @@
 import { Router } from "express";
 
 import { db } from "../database/client.ts";
-import { recordAudit } from "../services/audit.service.ts";
 import { authenticate } from "../middleware/authenticate.ts";
 import { requirePermission } from "../middleware/requirePermission.ts";
 import { resolveTenant } from "../middleware/resolveTenant.ts";
@@ -62,15 +61,15 @@ roleRouter.post(
       name: req.body.name,
       description: req.body.description,
       permissions: req.body.permissions,
-    });
-    await recordAudit(db, {
-      ...requestAuditContext(req),
-      organizationId: req.organization.id,
-      actorId: req.user?.id ?? null,
-      action: "role.created",
-      resourceType: "role",
-      resourceId: role.id,
-      metadata: { name: role.name },
+      audit: (createdRole) => ({
+        ...requestAuditContext(req),
+        organizationId: req.organization?.id ?? null,
+        actorId: req.user?.id ?? null,
+        action: "role.created",
+        resourceType: "role",
+        resourceId: createdRole.id,
+        metadata: { name: createdRole.name },
+      }),
     });
 
     res.status(201).json({
@@ -126,15 +125,15 @@ roleRouter.patch(
       name: req.body.name,
       description: req.body.description,
       permissions: req.body.permissions,
-    });
-    await recordAudit(db, {
-      ...requestAuditContext(req),
-      organizationId: req.organization.id,
-      actorId: req.user?.id ?? null,
-      action: "role.updated",
-      resourceType: "role",
-      resourceId: role.id,
-      metadata: { name: role.name, permissions: role.permissions },
+      audit: (updatedRole) => ({
+        ...requestAuditContext(req),
+        organizationId: req.organization?.id ?? null,
+        actorId: req.user?.id ?? null,
+        action: "role.updated",
+        resourceType: "role",
+        resourceId: updatedRole.id,
+        metadata: { name: updatedRole.name, permissions: updatedRole.permissions },
+      }),
     });
 
     res.status(200).json({
@@ -161,14 +160,14 @@ roleRouter.delete(
     await deleteRole(db, {
       organizationId: req.organization.id,
       roleId,
-    });
-    await recordAudit(db, {
-      ...requestAuditContext(req),
-      organizationId: req.organization.id,
-      actorId: req.user?.id ?? null,
-      action: "role.deleted",
-      resourceType: "role",
-      resourceId: roleId,
+      audit: {
+        ...requestAuditContext(req),
+        organizationId: req.organization.id,
+        actorId: req.user?.id ?? null,
+        action: "role.deleted",
+        resourceType: "role",
+        resourceId: roleId,
+      },
     });
 
     res.status(200).json({

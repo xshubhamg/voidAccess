@@ -98,23 +98,29 @@ describe("member routes", () => {
     route("patch").stack[1]!.handle(req, {} as Response, next);
     expect(req.body).toEqual({ roleId });
     const result = await invoke(route("patch").stack[4]!.handle, req);
-    expect(update).toHaveBeenCalledWith(expect.anything(), {
-      organizationId: orgId,
-      actorUserId: actorId,
-      targetUserId: userId,
-      roleId,
-    });
+    expect(update).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: orgId,
+        actorUserId: actorId,
+        targetUserId: userId,
+        roleId,
+      }),
+    );
     expect(result.status).toBe(200);
   });
 
   it("removes a member using server-derived context", async () => {
     const remove = spyOn(service, "removeMember").mockResolvedValue(undefined);
     const result = await invoke(route("delete").stack[4]!.handle, request());
-    expect(remove).toHaveBeenCalledWith(expect.anything(), {
-      organizationId: orgId,
-      actorUserId: actorId,
-      targetUserId: userId,
-    });
+    expect(remove).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        organizationId: orgId,
+        actorUserId: actorId,
+        targetUserId: userId,
+      }),
+    );
     expect(result).toEqual({ status: 200, body: { success: true, message: "Member removed" } });
   });
 

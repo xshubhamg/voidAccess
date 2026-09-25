@@ -35,12 +35,16 @@ describe("token signing and verification", () => {
 
   it("round-trips access tokens", () => {
     const token = signAccessToken(userId, sessionId);
-    expect(verifyAccessToken(token)).toEqual({ sub: userId, sid: sessionId });
+    expect(verifyAccessToken(token)).toEqual({ sub: userId, sid: sessionId, typ: "access" });
   });
 
   it("round-trips refresh tokens", () => {
     const token = signRefreshToken(userId, sessionId);
-    expect(verifyRefreshToken(token)).toEqual({ sub: userId, sid: sessionId });
+    const payload = verifyRefreshToken(token);
+    expect(payload.sub).toBe(userId);
+    expect(payload.sid).toBe(sessionId);
+    expect(payload.typ).toBe("refresh");
+    expect(payload.jti).toEqual(expect.any(String));
   });
 
   it("rejects tampered access tokens with a 401 AppError", () => {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 import type { Database } from "../src/database/client.ts";
+import { rolePermissions, roles } from "../src/database/schema/index.ts";
 
 class FakeRedis {
   store = new Map<string, string>();
@@ -23,11 +24,16 @@ class FakeRedis {
     return "OK";
   }
 
-  async del(key: string): Promise<number> {
+  async scan(_cursor: string, _match: string, pattern: string): Promise<[string, string[]]> {
+    const expression = new RegExp(`^${pattern.replaceAll("*", ".*")}$`);
+    return ["0", [...this.store.keys()].filter((key) => expression.test(key))];
+  }
+
+  async del(...keys: string[]): Promise<number> {
     if (this.failures.del) {
       throw new Error("redis down");
     }
-    return this.store.delete(key) ? 1 : 0;
+    return keys.reduce((count, key) => count + Number(this.store.delete(key)), 0);
   }
 }
 
@@ -43,21 +49,35 @@ const { resolveRolePermissions, invalidateRolePermissionsCache } =
   await import("../src/services/permission.service.ts");
 
 const ROLE_ID = "11111111-2222-3333-4444-555555555555";
-const CACHE_KEY = `rbac:role:${ROLE_ID}:permissions`;
+const CACHE_KEY = `rbac:role:${ROLE_ID}:v0:permissions`;
 
 function makeFakeDb(permissionNames: string[]) {
   let dbQueries = 0;
 
   const db = {
     select: () => ({
-      from: () => ({
-        innerJoin: () => ({
-          where: () => {
-            dbQueries += 1;
-            return Promise.resolve(permissionNames.map((name) => ({ name })));
-          },
-        }),
-      }),
+      from: (table: unknown) => {
+        if (table === roles) {
+          return {
+            where: () => ({
+              limit: () => Promise.resolve([{ permissionVersion: 0 }]),
+            }),
+          };
+        }
+
+        if (table === rolePermissions) {
+          return {
+            innerJoin: () => ({
+              where: () => {
+                dbQueries += 1;
+                return Promise.resolve(permissionNames.map((name) => ({ name })));
+              },
+            }),
+          };
+        }
+
+        throw new Error("Unexpected table");
+      },
     }),
   };
 

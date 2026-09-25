@@ -7,8 +7,11 @@ export const createInviteSchema = z.object({
   roleId: uuidSchema,
 });
 
-export const inviteParamsSchema = z.object({
+export const inviteCollectionParamsSchema = z.object({
   orgId: uuidSchema,
+});
+
+export const inviteParamsSchema = inviteCollectionParamsSchema.extend({
   inviteId: uuidSchema,
 });
 

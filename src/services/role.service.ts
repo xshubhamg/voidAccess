@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import type { Database } from "../database/client.ts";
 import {
@@ -11,6 +11,7 @@ import {
 import { AppError } from "../utils/AppError.ts";
 import { isUniqueViolation } from "../utils/dbErrors.ts";
 import { invalidateRolePermissionsCache } from "./permission.service.ts";
+import { recordAudit, type AuditEvent } from "./audit.service.ts";
 import { isReservedRoleName } from "../validations/role.schemas.ts";
 
 export interface RoleSummary {
@@ -28,6 +29,7 @@ interface CreateRoleInput {
   name: string;
   description?: string | null;
   permissions?: string[];
+  audit?: (role: RoleSummary) => AuditEvent;
 }
 
 interface UpdateRoleInput {
@@ -36,11 +38,13 @@ interface UpdateRoleInput {
   name?: string;
   description?: string | null;
   permissions?: string[];
+  audit?: (role: RoleSummary) => AuditEvent;
 }
 
 interface DeleteRoleInput {
   organizationId: string;
   roleId: string;
+  audit?: AuditEvent;
 }
 
 type RoleRow = typeof roles.$inferSelect;
@@ -152,7 +156,11 @@ export async function createRole(db: Database, input: CreateRoleInput): Promise<
           .values(permissionIds.map((permissionId) => ({ roleId: role.id, permissionId })));
       }
 
-      return toSummary(role, input.permissions ?? []);
+      const summary = toSummary(role, input.permissions ?? []);
+      if (input.audit) {
+        await recordAudit(tx, input.audit(summary));
+      }
+      return summary;
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -207,6 +215,9 @@ export async function updateRole(db: Database, input: UpdateRoleInput): Promise<
       const fieldChanges = {
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.permissions !== undefined
+          ? { permissionVersion: sql`${roles.permissionVersion} + 1` }
+          : {}),
       };
 
       let updatedRole: RoleRow | undefined = role;
@@ -235,7 +246,11 @@ export async function updateRole(db: Database, input: UpdateRoleInput): Promise<
         permissionNames = mappings.map((mapping) => mapping.permissionName);
       }
 
-      return toSummary(updatedRole, permissionNames);
+      const summary = toSummary(updatedRole, permissionNames);
+      if (input.audit) {
+        await recordAudit(tx, input.audit(summary));
+      }
+      return summary;
     });
 
     await invalidateRolePermissionsCache(updated.id);
@@ -264,6 +279,7 @@ export async function deleteRole(db: Database, input: DeleteRoleInput): Promise<
       .select()
       .from(roles)
       .where(and(eq(roles.id, input.roleId), roleVisibleTo(input.organizationId)))
+      .for("update")
       .limit(1);
 
     if (!role) {
@@ -290,6 +306,10 @@ export async function deleteRole(db: Database, input: DeleteRoleInput): Promise<
 
     if ((inviteUsage?.total ?? 0) > 0) {
       throw new AppError("Role is referenced by pending invites", 409, "ROLE_IN_USE");
+    }
+
+    if (input.audit) {
+      await recordAudit(tx, input.audit);
     }
 
     await tx.delete(roles).where(eq(roles.id, role.id));

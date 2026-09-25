@@ -3,9 +3,7 @@ import type { ErrorRequestHandler, RequestHandler, Request, Response } from "exp
 import { AppError } from "../utils/AppError.ts";
 
 export const notFoundHandler: RequestHandler = (req: Request, _res: Response, next) => {
-  next(
-    new AppError(`Route ${req.method} ${req.originalUrl} was not found`, 404, "ROUTE_NOT_FOUND"),
-  );
+  next(new AppError(`Route ${req.method} ${req.path} was not found`, 404, "ROUTE_NOT_FOUND"));
 };
 
 export const errorHandler: ErrorRequestHandler = (error, req: Request, res: Response, _next) => {

@@ -22,6 +22,13 @@
       "when": 1785100000000,
       "tag": "0002_verification_and_audit_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785200000000,
+      "tag": "0003_production_hardening",
+      "breakpoints": true
     }
   ]
 }

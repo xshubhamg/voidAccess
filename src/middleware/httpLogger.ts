@@ -12,6 +12,9 @@ export const httpLogger = pinoHttp({
       "req.body.password",
       "req.body.refreshToken",
       "req.body.accessToken",
+      "req.body.token",
+      "req.body.inviteToken",
+      "req.body.passwordConfirmation",
     ],
     censor: "[REDACTED]",
   },
@@ -38,8 +41,6 @@ export const httpLogger = pinoHttp({
         id: req.id,
         method: req.method,
         url: req.url?.split("?")[0],
-        query: req.query,
-        params: req.params,
         remoteAddress: req.remoteAddress,
         userAgent: req.headers?.["user-agent"],
       };

@@ -3,8 +3,9 @@ import { randomBytes } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { EMAIL_VERIFICATION_EXPIRATION } from "../config/index.ts";
-import type { Database } from "../database/client.ts";
+import type { Database, DatabaseExecutor } from "../database/client.ts";
 import { emailVerificationTokens, users } from "../database/schema/index.ts";
+import { recordAudit, type AuditEvent } from "./audit.service.ts";
 import { AppError } from "../utils/AppError.ts";
 import { hashToken, parseDurationMs } from "../utils/tokens.ts";
 
@@ -14,7 +15,10 @@ function createVerificationToken(): string {
   return randomBytes(32).toString("base64url");
 }
 
-export async function issueEmailVerificationToken(db: Database, userId: string): Promise<string> {
+export async function issueEmailVerificationToken(
+  db: DatabaseExecutor,
+  userId: string,
+): Promise<string> {
   const token = createVerificationToken();
   await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, userId));
   await db.insert(emailVerificationTokens).values({
@@ -29,19 +33,30 @@ export async function issueEmailVerificationToken(db: Database, userId: string):
 export async function requestEmailVerification(
   db: Database,
   email: string,
+  audit?: AuditEvent,
 ): Promise<string | null> {
-  const [user] = await db
-    .select({ id: users.id, emailVerified: users.emailVerified })
-    .from(users)
-    .where(sql`lower(${users.email}) = ${email}`)
-    .limit(1);
+  return db.transaction(async (tx) => {
+    const [user] = await tx
+      .select({ id: users.id, emailVerified: users.emailVerified })
+      .from(users)
+      .where(sql`lower(${users.email}) = ${email}`)
+      .limit(1);
 
-  if (!user || user.emailVerified) return null;
+    if (!user || user.emailVerified) return null;
 
-  return issueEmailVerificationToken(db, user.id);
+    const token = await issueEmailVerificationToken(tx, user.id);
+    if (audit) {
+      await recordAudit(tx, audit);
+    }
+    return token;
+  });
 }
 
-export async function verifyEmailToken(db: Database, token: string): Promise<void> {
+export async function verifyEmailToken(
+  db: Database,
+  token: string,
+  audit?: AuditEvent,
+): Promise<void> {
   const now = new Date();
   const tokenHash = hashToken(token);
 
@@ -88,5 +103,9 @@ export async function verifyEmailToken(db: Database, token: string): Promise<voi
       .update(users)
       .set({ emailVerified: true, updatedAt: now })
       .where(eq(users.id, verification.userId));
+
+    if (audit) {
+      await recordAudit(tx, audit);
+    }
   });
 }

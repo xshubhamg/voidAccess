@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
 
-import { and, asc, count, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, lte, sql } from "drizzle-orm";
 
 import { INVITE_EXPIRATION } from "../config/index.ts";
 import type { Database } from "../database/client.ts";
 import { invites, memberships, roles, users } from "../database/schema/index.ts";
+import { recordAudit, type AuditEvent } from "./audit.service.ts";
 import { AppError } from "../utils/AppError.ts";
 import { isUniqueViolation } from "../utils/dbErrors.ts";
 import { hashToken, parseDurationMs } from "../utils/tokens.ts";
@@ -44,7 +45,13 @@ function toInviteSummary(row: {
 
 export async function createInvite(
   db: Database,
-  input: { organizationId: string; invitedByUserId: string; email: string; roleId: string },
+  input: {
+    organizationId: string;
+    invitedByUserId: string;
+    email: string;
+    roleId: string;
+    audit?: (invite: InviteSummary) => AuditEvent;
+  },
 ): Promise<{ invite: InviteSummary; token: string }> {
   const token = createInviteToken();
 
@@ -78,6 +85,18 @@ export async function createInvite(
         );
       }
 
+      await tx
+        .update(invites)
+        .set({ status: "expired" })
+        .where(
+          and(
+            eq(invites.organizationId, input.organizationId),
+            sql`lower(${invites.email}) = ${input.email}`,
+            eq(invites.status, "pending"),
+            lte(invites.expiresAt, new Date()),
+          ),
+        );
+
       const [invite] = await tx
         .insert(invites)
         .values({
@@ -108,6 +127,13 @@ export async function createInvite(
         .from(roles)
         .where(eq(roles.id, invite.roleId))
         .limit(1);
+
+      if (input.audit) {
+        await recordAudit(
+          tx,
+          input.audit(toInviteSummary({ ...invite, roleName: withRole?.roleName ?? "Unknown" })),
+        );
+      }
 
       return {
         invite: toInviteSummary({ ...invite, roleName: withRole?.roleName ?? "Unknown" }),
@@ -163,35 +189,44 @@ export async function listInvites(
 
 export async function revokeInvite(
   db: Database,
-  input: { organizationId: string; inviteId: string },
+  input: { organizationId: string; inviteId: string; audit?: AuditEvent },
 ): Promise<void> {
-  const [revoked] = await db
-    .update(invites)
-    .set({ status: "revoked" })
-    .where(
-      and(
-        eq(invites.organizationId, input.organizationId),
-        eq(invites.id, input.inviteId),
-        eq(invites.status, "pending"),
-      ),
-    )
-    .returning({ id: invites.id });
+  await db.transaction(async (tx) => {
+    const [revoked] = await tx
+      .update(invites)
+      .set({ status: "revoked" })
+      .where(
+        and(
+          eq(invites.organizationId, input.organizationId),
+          eq(invites.id, input.inviteId),
+          eq(invites.status, "pending"),
+        ),
+      )
+      .returning({ id: invites.id });
 
-  if (revoked) return;
+    if (revoked) {
+      if (input.audit) await recordAudit(tx, input.audit);
+      return;
+    }
 
-  const [existing] = await db
-    .select({ id: invites.id })
-    .from(invites)
-    .where(and(eq(invites.organizationId, input.organizationId), eq(invites.id, input.inviteId)))
-    .limit(1);
+    const [existing] = await tx
+      .select({ id: invites.id })
+      .from(invites)
+      .where(and(eq(invites.organizationId, input.organizationId), eq(invites.id, input.inviteId)))
+      .limit(1);
 
-  if (!existing) throw new AppError("Invitation not found", 404, "INVITE_NOT_FOUND");
-  throw new AppError("Invitation is not pending", 409, "INVITE_NOT_PENDING");
+    if (!existing) throw new AppError("Invitation not found", 404, "INVITE_NOT_FOUND");
+    throw new AppError("Invitation is not pending", 409, "INVITE_NOT_PENDING");
+  });
 }
 
 export async function acceptInvite(
   db: Database,
-  input: { userId: string; token: string },
+  input: {
+    userId: string;
+    token: string;
+    audit?: (result: { organizationId: string; roleId: string }) => AuditEvent;
+  },
 ): Promise<{ organizationId: string; roleId: string }> {
   const now = new Date();
   const tokenHash = hashToken(input.token);
@@ -253,6 +288,11 @@ export async function acceptInvite(
       .set({ status: "accepted", acceptedAt: now })
       .where(eq(invites.id, invite.id));
 
-    return { organizationId: invite.organizationId, roleId: invite.roleId };
+    const result = { organizationId: invite.organizationId, roleId: invite.roleId };
+    if (input.audit) {
+      await recordAudit(tx, input.audit(result));
+    }
+
+    return result;
   });
 }

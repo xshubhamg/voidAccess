@@ -17,6 +17,7 @@ pool.on("error", (error) => {
 export const db = drizzle(pool, { schema });
 
 export type Database = typeof db;
+export type DatabaseExecutor = Pick<Database, "select" | "insert" | "update" | "delete">;
 
 export async function connectDatabase(): Promise<void> {
   const client = await pool.connect();

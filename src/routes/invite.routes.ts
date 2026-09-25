@@ -2,7 +2,6 @@ import { Router } from "express";
 
 import { NODE_ENV } from "../config/index.ts";
 import { db } from "../database/client.ts";
-import { recordAudit } from "../services/audit.service.ts";
 import { authenticate } from "../middleware/authenticate.ts";
 import { requirePermission } from "../middleware/requirePermission.ts";
 import { resolveTenant } from "../middleware/resolveTenant.ts";
@@ -19,6 +18,7 @@ import { asyncHandler } from "../utils/asyncHandler.ts";
 import {
   createInviteSchema,
   inviteAcceptanceSchema,
+  inviteCollectionParamsSchema,
   inviteListQuerySchema,
   inviteParamsSchema,
 } from "../validations/invite.schemas.ts";
@@ -28,7 +28,7 @@ export const inviteRouter: Router = Router();
 inviteRouter.post(
   "/organizations/:orgId/invites",
   authenticate,
-  validateRequest({ params: inviteParamsSchema, body: createInviteSchema }),
+  validateRequest({ params: inviteCollectionParamsSchema, body: createInviteSchema }),
   resolveTenant,
   requirePermission("member.invite"),
   asyncHandler(async (req, res) => {
@@ -36,20 +36,22 @@ inviteRouter.post(
       throw new AppError("Tenant context missing", 500, "TENANT_CONTEXT_MISSING");
     }
 
+    const organizationId = req.organization.id;
+    const userId = req.user.id;
     const result = await createInvite(db, {
-      organizationId: req.organization.id,
-      invitedByUserId: req.user.id,
+      organizationId,
+      invitedByUserId: userId,
       email: req.body.email,
       roleId: req.body.roleId,
-    });
-    await recordAudit(db, {
-      ...requestAuditContext(req),
-      organizationId: req.organization.id,
-      actorId: req.user.id,
-      action: "invite.created",
-      resourceType: "invite",
-      resourceId: result.invite.id,
-      metadata: { email: result.invite.email, roleId: result.invite.roleId },
+      audit: (invite) => ({
+        ...requestAuditContext(req),
+        organizationId,
+        actorId: userId,
+        action: "invite.created",
+        resourceType: "invite",
+        resourceId: invite.id,
+        metadata: { email: invite.email, roleId: invite.roleId },
+      }),
     });
 
     res.status(201).json({
@@ -66,7 +68,7 @@ inviteRouter.post(
 inviteRouter.get(
   "/organizations/:orgId/invites",
   authenticate,
-  validateRequest({ params: inviteParamsSchema, query: inviteListQuerySchema }),
+  validateRequest({ params: inviteCollectionParamsSchema, query: inviteListQuerySchema }),
   resolveTenant,
   requirePermission("member.read"),
   asyncHandler(async (req, res) => {
@@ -101,14 +103,14 @@ inviteRouter.delete(
     await revokeInvite(db, {
       organizationId: req.organization.id,
       inviteId: req.params.inviteId as string,
-    });
-    await recordAudit(db, {
-      ...requestAuditContext(req),
-      organizationId: req.organization.id,
-      actorId: req.user?.id ?? null,
-      action: "invite.revoked",
-      resourceType: "invite",
-      resourceId: req.params.inviteId as string,
+      audit: {
+        ...requestAuditContext(req),
+        organizationId: req.organization.id,
+        actorId: req.user?.id ?? null,
+        action: "invite.revoked",
+        resourceType: "invite",
+        resourceId: req.params.inviteId as string,
+      },
     });
 
     res.status(200).json({
@@ -127,17 +129,18 @@ inviteRouter.post(
       throw new AppError("Authentication required", 401, "UNAUTHORIZED");
     }
 
+    const userId = req.user.id;
     const result = await acceptInvite(db, {
-      userId: req.user.id,
+      userId,
       token: req.body.token,
-    });
-    await recordAudit(db, {
-      ...requestAuditContext(req),
-      organizationId: result.organizationId,
-      actorId: req.user.id,
-      action: "invite.accepted",
-      resourceType: "invite",
-      metadata: { roleId: result.roleId },
+      audit: (accepted) => ({
+        ...requestAuditContext(req),
+        organizationId: accepted.organizationId,
+        actorId: userId,
+        action: "invite.accepted",
+        resourceType: "invite",
+        metadata: { roleId: accepted.roleId },
+      }),
     });
 
     res.status(200).json({

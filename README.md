@@ -35,7 +35,7 @@ The application validates environment configuration on startup. Required setting
 
 Access tokens are session-bound and are rejected after logout or session expiry. Refresh tokens rotate once; reuse revokes the user’s active sessions. Invitations target existing email-verified users and are single-use, expiring, and tenant-scoped.
 
-Authentication uses `Authorization: Bearer <access-token>`. All request bodies, query parameters, and route parameters are validated with Zod. Expected errors use the standard envelope:
+Authentication uses `Authorization: Bearer <access-token>`. Access and refresh JWTs use separate signing keys and explicit token types. All request bodies, query parameters, and route parameters are validated with Zod. Expected errors use the standard envelope:
 
 ```json
 {
@@ -55,3 +55,16 @@ bunx tsc --noEmit
 ```
 
 `TRUST_PROXY_HOPS` controls how many reverse-proxy hops Express trusts for `req.ip`; leave it at `0` unless the API is behind a trusted proxy.
+
+## Production hardening
+
+- Run behind TLS and a trusted reverse proxy; configure `TRUST_PROXY_HOPS` for the real proxy chain.
+- Generate independent JWT secrets of at least 32 characters and store them in a secrets manager.
+- Use private PostgreSQL and Redis network access. The Compose file binds both services to loopback for local development only.
+- Run `drizzle-kit migrate` as a release step before starting new application instances.
+- The built-in rate limiter uses Redis so limits are shared across API replicas. Treat Redis availability as part of the request-path availability budget.
+- Integrate a durable email provider or outbox for production verification and invitation delivery. Development responses expose tokens only outside production.
+- Define retention jobs for sessions, verification tokens, invitations, and audit records before production launch.
+- Monitor `/health/ready`, PostgreSQL saturation, Redis failures, authentication failures, and audit-write failures.
+
+The system architecture, trust boundaries, invariants, Mermaid diagrams, and decision register are documented in [docs/architecture.md](docs/architecture.md). Domain vocabulary is in [CONTEXT.md](CONTEXT.md), and durable decisions are recorded in [docs/adr](docs/adr/).

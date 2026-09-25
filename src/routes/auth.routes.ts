@@ -2,6 +2,7 @@ import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 
 import { NODE_ENV } from "../config/index.ts";
+import { createRateLimitStore } from "../middleware/rateLimitStore.ts";
 import { db } from "../database/client.ts";
 import { authenticate } from "../middleware/authenticate.ts";
 import { validateRequest } from "../middleware/validateRequest.ts";
@@ -14,11 +15,9 @@ import {
   type SessionMeta,
 } from "../services/auth.service.ts";
 import {
-  issueEmailVerificationToken,
   requestEmailVerification,
   verifyEmailToken,
 } from "../services/email-verification.service.ts";
-import { recordAudit } from "../services/audit.service.ts";
 import { AppError } from "../utils/AppError.ts";
 import { requestAuditContext } from "../utils/auditContext.ts";
 import { asyncHandler } from "../utils/asyncHandler.ts";
@@ -42,6 +41,7 @@ authRouter.use(
     limit: 30,
     standardHeaders: "draft-8",
     legacyHeaders: false,
+    store: createRateLimitStore("auth", 15 * 60 * 1000),
   }),
 );
 
@@ -49,15 +49,16 @@ authRouter.post(
   "/register",
   validateRequest({ body: registerSchema }),
   asyncHandler(async (req, res) => {
-    const user = await registerUser(db, req.body);
-    const verificationToken = await issueEmailVerificationToken(db, user.id);
-    await recordAudit(db, {
-      ...requestAuditContext(req),
-      organizationId: null,
-      actorId: user.id,
-      action: "auth.registered",
-      resourceType: "user",
-      resourceId: user.id,
+    const { user, verificationToken } = await registerUser(db, {
+      ...req.body,
+      audit: (createdUser) => ({
+        ...requestAuditContext(req),
+        organizationId: null,
+        actorId: createdUser.id,
+        action: "auth.registered",
+        resourceType: "user",
+        resourceId: createdUser.id,
+      }),
     });
 
     res.status(201).json({
@@ -75,8 +76,7 @@ authRouter.post(
   "/verify-email",
   validateRequest({ body: verificationTokenSchema }),
   asyncHandler(async (req, res) => {
-    await verifyEmailToken(db, req.body.token);
-    await recordAudit(db, {
+    await verifyEmailToken(db, req.body.token, {
       ...requestAuditContext(req),
       organizationId: null,
       actorId: null,
@@ -95,8 +95,7 @@ authRouter.post(
   "/resend-verification",
   validateRequest({ body: resendVerificationSchema }),
   asyncHandler(async (req, res) => {
-    const verificationToken = await requestEmailVerification(db, req.body.email);
-    await recordAudit(db, {
+    const verificationToken = await requestEmailVerification(db, req.body.email, {
       ...requestAuditContext(req),
       organizationId: null,
       actorId: null,
@@ -117,15 +116,14 @@ authRouter.post(
   validateRequest({ body: loginSchema }),
   asyncHandler(async (req, res) => {
     const meta = sessionMetaFrom(req.ip, req.headers["user-agent"]);
-    const result = await loginUser(db, req.body, meta);
-    await recordAudit(db, {
+    const result = await loginUser(db, req.body, meta, (user) => ({
       ...requestAuditContext(req),
       organizationId: null,
-      actorId: result.user.id,
+      actorId: user.id,
       action: "auth.login",
       resourceType: "user",
-      resourceId: result.user.id,
-    });
+      resourceId: user.id,
+    }));
 
     res.status(200).json({
       success: true,
@@ -139,15 +137,14 @@ authRouter.post(
   "/refresh",
   validateRequest({ body: refreshTokenSchema }),
   asyncHandler(async (req, res) => {
-    const result = await refreshSession(db, req.body.refreshToken);
-    await recordAudit(db, {
+    const result = await refreshSession(db, req.body.refreshToken, (user) => ({
       ...requestAuditContext(req),
       organizationId: null,
-      actorId: result.user.id,
+      actorId: user.id,
       action: "auth.session_refreshed",
       resourceType: "user",
-      resourceId: result.user.id,
-    });
+      resourceId: user.id,
+    }));
 
     res.status(200).json({
       success: true,
@@ -161,8 +158,7 @@ authRouter.post(
   "/logout",
   validateRequest({ body: refreshTokenSchema }),
   asyncHandler(async (req, res) => {
-    await logoutSession(db, req.body.refreshToken);
-    await recordAudit(db, {
+    await logoutSession(db, req.body.refreshToken, {
       ...requestAuditContext(req),
       organizationId: null,
       actorId: null,
@@ -185,8 +181,7 @@ authRouter.post(
       throw new AppError("Authentication required", 401, "UNAUTHORIZED");
     }
 
-    await revokeAllSessions(db, req.user.id);
-    await recordAudit(db, {
+    await revokeAllSessions(db, req.user.id, {
       ...requestAuditContext(req),
       organizationId: null,
       actorId: req.user.id,

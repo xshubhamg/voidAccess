@@ -2,6 +2,7 @@ import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   index,
+  integer,
   jsonb,
   pgEnum,
   pgTable,
@@ -57,6 +58,7 @@ export const roles = pgTable(
     name: varchar("name", { length: 80 }).notNull(),
     description: text("description"),
     isDefault: boolean("is_default").default(false).notNull(),
+    permissionVersion: integer("permission_version").default(0).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
@@ -106,7 +108,7 @@ export const memberships = pgTable(
       .references(() => organizations.id, { onDelete: "cascade", onUpdate: "cascade" }),
     roleId: uuid("role_id")
       .notNull()
-      .references(() => roles.id, { onDelete: "cascade", onUpdate: "cascade" }),
+      .references(() => roles.id, { onDelete: "restrict", onUpdate: "cascade" }),
     joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
@@ -127,6 +129,7 @@ export const sessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
     refreshTokenHash: text("refresh_token_hash").notNull(),
+    refreshTokenJti: text("refresh_token_jti"),
     ipAddress: varchar("ip_address", { length: 45 }),
     userAgent: text("user_agent"),
     status: sessionStatus("status").default("active").notNull(),
@@ -173,7 +176,7 @@ export const invites = pgTable(
     email: varchar("email", { length: 320 }).notNull(),
     roleId: uuid("role_id")
       .notNull()
-      .references(() => roles.id, { onDelete: "cascade", onUpdate: "cascade" }),
+      .references(() => roles.id, { onDelete: "restrict", onUpdate: "cascade" }),
     tokenHash: text("token_hash").notNull().unique(),
     status: inviteStatus("status").default("pending").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

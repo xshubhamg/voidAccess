@@ -1,7 +1,6 @@
 import { Router } from "express";
 
 import { db } from "../database/client.ts";
-import { recordAudit } from "../services/audit.service.ts";
 import { authenticate } from "../middleware/authenticate.ts";
 import { requirePermission } from "../middleware/requirePermission.ts";
 import { resolveTenant } from "../middleware/resolveTenant.ts";
@@ -61,15 +60,15 @@ memberRouter.patch(
       actorUserId: req.user.id,
       targetUserId: userId,
       roleId: req.body.roleId,
-    });
-    await recordAudit(db, {
-      ...requestAuditContext(req),
-      organizationId: req.organization.id,
-      actorId: req.user.id,
-      action: "member.role_updated",
-      resourceType: "membership",
-      resourceId: userId,
-      metadata: { roleId: member.roleId, roleName: member.roleName },
+      audit: (updatedMember) => ({
+        ...requestAuditContext(req),
+        organizationId: req.organization?.id ?? null,
+        actorId: req.user?.id ?? null,
+        action: "member.role_updated",
+        resourceType: "membership",
+        resourceId: userId,
+        metadata: { roleId: updatedMember.roleId, roleName: updatedMember.roleName },
+      }),
     });
 
     res.status(200).json({
@@ -101,14 +100,14 @@ memberRouter.delete(
       organizationId: req.organization.id,
       actorUserId: req.user.id,
       targetUserId: userId,
-    });
-    await recordAudit(db, {
-      ...requestAuditContext(req),
-      organizationId: req.organization.id,
-      actorId: req.user.id,
-      action: "member.removed",
-      resourceType: "membership",
-      resourceId: userId,
+      audit: {
+        ...requestAuditContext(req),
+        organizationId: req.organization.id,
+        actorId: req.user.id,
+        action: "member.removed",
+        resourceType: "membership",
+        resourceId: userId,
+      },
     });
 
     res.status(200).json({

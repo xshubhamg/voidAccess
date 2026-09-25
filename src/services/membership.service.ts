@@ -2,6 +2,7 @@ import { and, asc, eq } from "drizzle-orm";
 
 import type { Database } from "../database/client.ts";
 import { memberships, organizations, roles, users } from "../database/schema/index.ts";
+import { recordAudit, type AuditEvent } from "./audit.service.ts";
 import { AppError } from "../utils/AppError.ts";
 
 const OWNER_ROLE_NAME = "Owner";
@@ -28,12 +29,14 @@ interface UpdateMemberRoleInput {
   actorUserId: string;
   targetUserId: string;
   roleId: string;
+  audit?: (member: MembershipSummary) => AuditEvent;
 }
 
 interface RemoveMemberInput {
   organizationId: string;
   actorUserId: string;
   targetUserId: string;
+  audit?: AuditEvent;
 }
 
 /**
@@ -108,13 +111,18 @@ export async function updateMemberRole(
 
     await tx.update(memberships).set({ roleId: newRole.id }).where(eq(memberships.id, target.id));
 
-    return {
+    const membership = {
       userId: target.userId,
       organizationId: organization.id,
       roleId: newRole.id,
       roleName: newRole.name,
       joinedAt: target.joinedAt,
     };
+    if (input.audit) {
+      await recordAudit(tx, input.audit(membership));
+    }
+
+    return membership;
   });
 }
 
@@ -176,5 +184,8 @@ export async function removeMember(db: Database, input: RemoveMemberInput): Prom
     }
 
     await tx.delete(memberships).where(eq(memberships.id, target.id));
+    if (input.audit) {
+      await recordAudit(tx, input.audit);
+    }
   });
 }
